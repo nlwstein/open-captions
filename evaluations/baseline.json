@@ -43,11 +43,11 @@
       "hypothesis" : "Well, this is the kick-off meeting for our project. And this is just what we're going to be doing over the next 25 minutes. So first of all, just to kind of make sure that we all know each other, I'm Laura and I'm the project manager. Great. Do you want to introduce yourself again? Hi, I'm David and I'm supposed to be an industrial designer. Okay. And I'm Andrew and I'm our marketing. expert. I'm Greg and I'm user interface. Great, okay. So we're designing a new remote control and oh I have to record he's here actually so that's David, Andrew and Craig isn't it?",
       "latency" : {
         "audioDuration" : 46.7,
-        "realTimeFactor" : 0.4688299732334047,
-        "recognizerFirstTokenTime" : 1.6045799255371094,
-        "recognizerPipelineTime" : 21.89418089389801,
-        "timeToFirstWord" : 1.931438709,
-        "totalTime" : 21.89435975
+        "realTimeFactor" : 0.5640356611349037,
+        "recognizerFirstTokenTime" : 2.175705075263977,
+        "recognizerPipelineTime" : 26.340315103530884,
+        "timeToFirstWord" : 2.628749709,
+        "totalTime" : 26.340465375
       },
       "reference" : "Um well this is the kick-off meeting for our our project. Um and um this is just what we're gonna be doing over the next twenty five minutes\nMm-hmm.\nUm so first of all, just to kind of make sure that we all know each other, I'm Laura and I'm the project manager. Do\nGreat\nyou\nwant to introduce yourself again?\nHi, I'm David and I'm supposed to be an industrial designer\nOkay\nAnd I'm Andrew and I'm uh our marketing\nUm\nexpert.\nI'm Craig and I'm User Interface.\nGreat. Okay. Um so we're designing a new remote control and um Oh I have to record who's here actually. So that's David, Andrew and Craig, isn't it?",
       "semanticWordErrorRate" : 0.1440677966101695,
@@ -55,37 +55,37 @@
         {
           "end" : 3.42,
           "start" : 0.02,
-          "text" : "Well,  this  is  the  kick -off  meeting  for  our  project.",
+          "text" : "Well, this is the kick -off meeting for our project.",
           "wordCount" : 10
         },
         {
           "end" : 10.98,
           "start" : 7.700001,
-          "text" : "And  this  is  just  what  we're  going  to  be  doing  over  the  next  25  minutes.",
+          "text" : "And this is just what we're going to be doing over the next 25 minutes.",
           "wordCount" : 15
         },
         {
           "end" : 25.34,
           "start" : 12.660001,
-          "text" : "So  first  of  all,  just  to  kind  of  make  sure  that  we  all  know  each  other,  I'm  Laura  and  I'm  the  project  manager.  Great.  Do  you  want  to  introduce  yourself  again?  Hi,  I'm  David  and  I'm  supposed  to  be  an  industrial  designer.  Okay.",
+          "text" : "So first of all, just to kind of make sure that we all know each other, I'm Laura and I'm the project manager. Great. Do you want to introduce yourself again? Hi, I'm David and I'm supposed to be an industrial designer. Okay.",
           "wordCount" : 43
         },
         {
           "end" : 29.34,
           "start" : 26.24,
-          "text" : "And  I'm  Andrew  and  I'm  our  marketing.  expert.",
+          "text" : "And I'm Andrew and I'm our marketing. expert.",
           "wordCount" : 8
         },
         {
           "end" : 34.58,
           "start" : 31.12,
-          "text" : "I'm  Greg  and  I'm  user  interface.  Great,  okay.",
+          "text" : "I'm Greg and I'm user interface. Great, okay.",
           "wordCount" : 8
         },
         {
           "end" : 45.96,
           "start" : 36.62,
-          "text" : "So  we're  designing  a  new  remote  control  and  oh  I  have  to  record  he's  here  actually  so  that's  David,  Andrew  and  Craig  isn't  it?",
+          "text" : "So we're designing a new remote control and oh I have to record he's here actually so that's David, Andrew and Craig isn't it?",
           "wordCount" : 24
         }
       ],
@@ -160,11 +160,11 @@
       "hypothesis" : "Well this is the kick off meeting for our project. And this is what we're going to be doing over the next 25 minutes. So first of all just to make sure that we all know each other, I'm Laura and I'm project manager. Do you want to introduce yourself again? Hi I'm David and I'm supposed to be an industrial designer. Okay. I'm Andrew and I'm a marketing expert. I'm Greg and I'm the agent face. Great. Okay. So we're designing in here remote control and... Oh, I have to record, he's here actually. So that's David, Andrew and Craig.",
       "latency" : {
         "audioDuration" : 46.7,
-        "realTimeFactor" : 0.440857168993576,
-        "recognizerFirstTokenTime" : 1.5271409749984741,
-        "recognizerPipelineTime" : 20.587893962860107,
-        "timeToFirstWord" : 1.852851625,
-        "totalTime" : 20.588029792
+        "realTimeFactor" : 0.49720157297644535,
+        "recognizerFirstTokenTime" : 1.7699239253997803,
+        "recognizerPipelineTime" : 23.21919095516205,
+        "timeToFirstWord" : 2.132291208,
+        "totalTime" : 23.219313458
       },
       "reference" : "Um well this is the kick-off meeting for our our project. Um and um this is just what we're gonna be doing over the next twenty five minutes\nMm-hmm.\nUm so first of all, just to kind of make sure that we all know each other, I'm Laura and I'm the project manager. Do\nGreat\nyou\nwant to introduce yourself again?\nHi, I'm David and I'm supposed to be an industrial designer\nOkay\nAnd I'm Andrew and I'm uh our marketing\nUm\nexpert.\nI'm Craig and I'm User Interface.\nGreat. Okay. Um so we're designing a new remote control and um Oh I have to record who's here actually. So that's David, Andrew and Craig, isn't it?",
       "semanticWordErrorRate" : 0.2457627118644068,
@@ -172,43 +172,43 @@
         {
           "end" : 3.42,
           "start" : 0.55999947,
-          "text" : "Well  this  is  the  kick  off  meeting  for  our  project.",
+          "text" : "Well this is the kick off meeting for our project.",
           "wordCount" : 10
         },
         {
           "end" : 10.98,
           "start" : 6.879999,
-          "text" : "And  this  is  what  we're  going  to  be  doing  over  the  next  25  minutes.",
+          "text" : "And this is what we're going to be doing over the next 25 minutes.",
           "wordCount" : 14
         },
         {
           "end" : 25.24,
           "start" : 12.839999,
-          "text" : "So  first  of  all  just  to  make  sure  that  we  all  know  each  other,  I'm  Laura  and  I'm  project  manager.  Do  you  want  to  introduce  yourself  again?  Hi  I'm  David  and  I'm  supposed  to  be  an  industrial  designer.  Okay.",
+          "text" : "So first of all just to make sure that we all know each other, I'm Laura and I'm project manager. Do you want to introduce yourself again? Hi I'm David and I'm supposed to be an industrial designer. Okay.",
           "wordCount" : 39
         },
         {
           "end" : 30.66,
           "start" : 26.44,
-          "text" : "I'm  Andrew  and  I'm  a  marketing  expert.",
+          "text" : "I'm Andrew and I'm a marketing expert.",
           "wordCount" : 7
         },
         {
           "end" : 34.6,
           "start" : 31.5,
-          "text" : "I'm  Greg  and  I'm  the  agent  face.  Great.  Okay.",
+          "text" : "I'm Greg and I'm the agent face. Great. Okay.",
           "wordCount" : 9
         },
         {
           "end" : 39.9,
           "start" : 36.76,
-          "text" : "So  we're  designing  in  here  remote  control  and...",
+          "text" : "So we're designing in here remote control and...",
           "wordCount" : 8
         },
         {
           "end" : 45.52,
           "start" : 40.72,
-          "text" : "Oh,  I  have  to  record,  he's  here  actually.  So  that's  David,  Andrew  and  Craig.",
+          "text" : "Oh, I have to record, he's here actually. So that's David, Andrew and Craig.",
           "wordCount" : 14
         }
       ],
@@ -216,22 +216,22 @@
     },
     {
       "alignment" : {
-        "correct" : 105,
-        "deletions" : 9,
+        "correct" : 73,
+        "deletions" : 43,
         "insertions" : 0,
         "referenceWords" : 119,
-        "substitutions" : 5
+        "substitutions" : 3
       },
       "criticalInfo" : {
         "categories" : {
           "name" : {
-            "correct" : 9,
-            "recall" : 1,
+            "correct" : 3,
+            "recall" : 0.3333333333333333,
             "total" : 9
           },
           "negation" : {
-            "correct" : 1,
-            "recall" : 1,
+            "correct" : 0,
+            "recall" : 0,
             "total" : 1
           },
           "number" : {
@@ -241,43 +241,92 @@
           }
         },
         "misses" : [
-
+          {
+            "category" : "name",
+            "context" : "marketing um expert i'm craig and i'm user interface",
+            "outcome" : "dropped",
+            "referenceIndex" : 85,
+            "severity" : "moderate",
+            "spoken" : "craig"
+          },
+          {
+            "category" : "name",
+            "context" : "i'm craig and i'm user interface great okay um",
+            "outcome" : "dropped",
+            "referenceIndex" : 88,
+            "severity" : "moderate",
+            "spoken" : "user"
+          },
+          {
+            "category" : "name",
+            "context" : "craig and i'm user interface great okay um so",
+            "outcome" : "dropped",
+            "referenceIndex" : 89,
+            "severity" : "moderate",
+            "spoken" : "interface"
+          },
+          {
+            "category" : "name",
+            "context" : "here actually so that's david andrew and craig isn't",
+            "outcome" : "dropped",
+            "referenceIndex" : 112,
+            "severity" : "moderate",
+            "spoken" : "david"
+          },
+          {
+            "category" : "name",
+            "context" : "actually so that's david andrew and craig isn't it",
+            "outcome" : "dropped",
+            "referenceIndex" : 113,
+            "severity" : "moderate",
+            "spoken" : "andrew"
+          },
+          {
+            "category" : "name",
+            "context" : "that's david andrew and craig isn't it",
+            "outcome" : "dropped",
+            "referenceIndex" : 115,
+            "severity" : "moderate",
+            "spoken" : "craig"
+          },
+          {
+            "category" : "negation",
+            "context" : "david andrew and craig isn't it",
+            "outcome" : "dropped",
+            "referenceIndex" : 116,
+            "severity" : "severe",
+            "spoken" : "isn't"
+          }
         ]
       },
       "decodingFallbacks" : 5,
       "fixture" : "ami-meeting-synth",
-      "hypothesis" : "Um well this is the kickoff meeting for our project. Um and um this is just what we're gonna be doing over the next 25 minutes. Um so first of all, just to kind of make sure that we all know each other, I'm Laura and I'm the project manager. Do you want to introduce yourself again? Hi, I'm David and I'm supposed to be an industrial designer. Okay. And I'm Andrew and I'm a marketing. I'm Craig and I'm user interface. Great. Okay. Umm so we're designing a new remote control and umm oh I have to record who's here actually. So that's David, Andrew and Craig, isn't it?",
+      "hypothesis" : "Um well this is the kickoff meeting for our project. Um and um this is just what we're gonna be doing over the next 25 minutes. Um so first of all, just to kind of make sure that we all know each other, I'm Laura and I'm the project manager. Do you want to introduce yourself again? Hi, I'm David and I'm supposed to be an industrial designer. Okay. And I'm Andrew and I'm a marketing.",
       "latency" : {
         "audioDuration" : 46.7,
-        "realTimeFactor" : 1.0699207030620983,
-        "recognizerFirstTokenTime" : 1.61388099193573,
-        "recognizerPipelineTime" : 49.965356945991516,
-        "timeToFirstWord" : 1.938168208,
-        "totalTime" : 49.965296833
+        "realTimeFactor" : 0.7421780388865096,
+        "recognizerFirstTokenTime" : 1.6863210201263428,
+        "recognizerPipelineTime" : 34.659680008888245,
+        "timeToFirstWord" : 2.02684825,
+        "totalTime" : 34.659714416
       },
       "reference" : "Um well this is the kick-off meeting for our our project. Um and um this is just what we're gonna be doing over the next twenty five minutes\nMm-hmm.\nUm so first of all, just to kind of make sure that we all know each other, I'm Laura and I'm the project manager. Do\nGreat\nyou\nwant to introduce yourself again?\nHi, I'm David and I'm supposed to be an industrial designer\nOkay\nAnd I'm Andrew and I'm uh our marketing\nUm\nexpert.\nI'm Craig and I'm User Interface.\nGreat. Okay. Um so we're designing a new remote control and um Oh I have to record who's here actually. So that's David, Andrew and Craig, isn't it?",
-      "semanticWordErrorRate" : 0.1016949152542373,
+      "semanticWordErrorRate" : 0.3728813559322034,
       "turns" : [
         {
           "end" : 7.26,
           "start" : 0.02,
-          "text" : "Um  well  this  is  the  kickoff  meeting  for  our  project.  Um  and  um  this  is  just  what  we're  gonna  be  doing  over  the  next  25  minutes.",
+          "text" : "Um well this is the kickoff meeting for our project. Um and um this is just what we're gonna be doing over the next 25 minutes.",
           "wordCount" : 26
         },
         {
           "end" : 28.3,
           "start" : 11.24,
-          "text" : "Um  so  first  of  all,  just  to  kind  of  make  sure  that  we  all  know  each  other,  I'm  Laura  and  I'm  the  project  manager.  Do  you  want  to  introduce  yourself  again?  Hi,  I'm  David  and  I'm  supposed  to  be  an  industrial  designer.  Okay.  And  I'm  Andrew  and  I'm  a  marketing.",
+          "text" : "Um so first of all, just to kind of make sure that we all know each other, I'm Laura and I'm the project manager. Do you want to introduce yourself again? Hi, I'm David and I'm supposed to be an industrial designer. Okay. And I'm Andrew and I'm a marketing.",
           "wordCount" : 50
-        },
-        {
-          "end" : 42.56,
-          "start" : 30.68,
-          "text" : "I'm  Craig  and  I'm  user  interface.  Great.  Okay.  Umm  so  we're  designing  a  new  remote  control  and  umm  oh  I  have  to  record  who's  here  actually.  So  that's  David,  Andrew  and  Craig,  isn't  it?",
-          "wordCount" : 34
         }
       ],
-      "wordErrorRate" : 0.11764705882352941
+      "wordErrorRate" : 0.3865546218487395
     },
     {
       "alignment" : {
@@ -314,11 +363,11 @@
       "hypothesis" : "Morning, Margaret. I'm Dr. Feldman. Your blood pressure is 148 over 92 today. I'd like you to start lisinopril, 10 milligrams, once a day. Okay. Should I still take the metformin? Yes. Keep taking the metformin. That hasn't changed. Do not take it with grapefruit juice. and don't skip a dose, even if you feel fine. If you don't feel better in three days, call the office. The number is 555-0142.",
       "latency" : {
         "audioDuration" : 46.3180625,
-        "realTimeFactor" : 0.38288315257141853,
-        "recognizerFirstTokenTime" : 1.6458230018615723,
-        "recognizerPipelineTime" : 17.734291076660156,
-        "timeToFirstWord" : 1.978326958,
-        "totalTime" : 17.734405791
+        "realTimeFactor" : 0.42615596416624724,
+        "recognizerFirstTokenTime" : 1.7633110284805298,
+        "recognizerPipelineTime" : 19.738502025604248,
+        "timeToFirstWord" : 2.118977666,
+        "totalTime" : 19.738718583
       },
       "reference" : "Morning, Margaret. I'm Doctor Feldman.\nYour blood pressure is 148 over 92 today.\nI'd like you to start lisinopril, 10 milligrams, once a day.\nOkay. Should I still take the metformin?\nYes, keep taking the metformin. That hasn't changed.\nDo not take it with grapefruit juice.\nAnd don't skip a dose, even if you feel fine.\nIf you don't feel better in 3 days, call the office.\nThe number is 555-0142.",
       "semanticWordErrorRate" : 0,
@@ -326,55 +375,55 @@
         {
           "end" : 2.42,
           "start" : 0.02,
-          "text" : "Morning,  Margaret.  I'm  Dr.  Feldman.",
+          "text" : "Morning, Margaret. I'm Dr. Feldman.",
           "wordCount" : 5
         },
         {
           "end" : 7.58,
           "start" : 3.8,
-          "text" : "Your  blood  pressure  is  148  over  92  today.",
+          "text" : "Your blood pressure is 148 over 92 today.",
           "wordCount" : 8
         },
         {
           "end" : 13.58,
           "start" : 9.04,
-          "text" : "I'd  like  you  to  start  lisinopril,  10  milligrams,  once  a  day.",
+          "text" : "I'd like you to start lisinopril, 10 milligrams, once a day.",
           "wordCount" : 11
         },
         {
           "end" : 19.08,
           "start" : 16.38,
-          "text" : "Okay.  Should  I  still  take  the  metformin?",
+          "text" : "Okay. Should I still take the metformin?",
           "wordCount" : 7
         },
         {
           "end" : 24.46,
           "start" : 20.419998,
-          "text" : "Yes.  Keep  taking  the  metformin.  That  hasn't  changed.",
+          "text" : "Yes. Keep taking the metformin. That hasn't changed.",
           "wordCount" : 8
         },
         {
           "end" : 28.74,
           "start" : 26.36,
-          "text" : "Do  not  take  it  with  grapefruit  juice.",
+          "text" : "Do not take it with grapefruit juice.",
           "wordCount" : 7
         },
         {
           "end" : 34.24,
           "start" : 30.900002,
-          "text" : "and  don't  skip  a  dose,  even  if  you  feel  fine.",
+          "text" : "and don't skip a dose, even if you feel fine.",
           "wordCount" : 10
         },
         {
           "end" : 40.02,
           "start" : 36.4,
-          "text" : "If  you  don't  feel  better  in  three  days,  call  the  office.",
+          "text" : "If you don't feel better in three days, call the office.",
           "wordCount" : 11
         },
         {
           "end" : 45.78,
           "start" : 42.28,
-          "text" : "The  number  is  555 -0142.",
+          "text" : "The number is 555 -0142.",
           "wordCount" : 5
         }
       ],
@@ -432,11 +481,11 @@
       "hypothesis" : "So how was the drive up here? Long. There was construction almost the whole way. You must be exhausted. Sit down, I'll get you a drink. We saved you a plate. The roast is still warm. Thank you. It smells wonderful. Did Michael end up coming with you? No, he had to work. He sent his logo. Tell him you're with him. He works too hard. I told him the car needs to go back to the back door this time. Did you remember to lock the back door this time? The gun region needs attention after all that rain. And as you said, I was going to lock the back door by Tuesday.",
       "latency" : {
         "audioDuration" : 40.27425,
-        "realTimeFactor" : 0.5298302047834534,
-        "recognizerFirstTokenTime" : 1.593667984008789,
-        "recognizerPipelineTime" : 21.338388919830322,
-        "timeToFirstWord" : 1.915537042,
-        "totalTime" : 21.338514125
+        "realTimeFactor" : 0.5802082627237005,
+        "recognizerFirstTokenTime" : 1.66982102394104,
+        "recognizerPipelineTime" : 23.367220997810364,
+        "timeToFirstWord" : 2.013079458,
+        "totalTime" : 23.367452625
       },
       "reference" : "So how was the drive up here?\nLong. There was construction almost the whole way.\nYou must be exhausted. Sit down, I'll get you a drink.\nWe saved you a plate. The roast is still warm.\nThank you. It smells wonderful.\nDid Michael end up coming with you?\nNo, he had to work. He sends his love though.\nTell him we missed him. He works too hard.\nI'll call him tomorrow and say hello.\nHe'd like that. He never calls anyone anymore.\nThe garden looks lovely this year.\nThe tomatoes did well. The peppers did not.",
       "semanticWordErrorRate" : 0.5104166666666666,
@@ -444,43 +493,43 @@
         {
           "end" : 1.22,
           "start" : 0.02,
-          "text" : "So  how  was  the  drive  up  here?",
+          "text" : "So how was the drive up here?",
           "wordCount" : 7
         },
         {
           "end" : 12.64,
           "start" : 2.1999977,
-          "text" : "Long.  There  was  construction  almost  the  whole  way.  You  must  be  exhausted.  Sit  down,  I'll  get  you  a  drink.  We  saved  you  a  plate.  The  roast  is  still  warm.",
+          "text" : "Long. There was construction almost the whole way. You must be exhausted. Sit down, I'll get you a drink. We saved you a plate. The roast is still warm.",
           "wordCount" : 29
         },
         {
           "end" : 15.3,
           "start" : 13.84,
-          "text" : "Thank  you.  It  smells  wonderful.",
+          "text" : "Thank you. It smells wonderful.",
           "wordCount" : 5
         },
         {
           "end" : 18.22,
           "start" : 16.47,
-          "text" : "Did  Michael  end  up  coming  with  you?",
+          "text" : "Did Michael end up coming with you?",
           "wordCount" : 7
         },
         {
           "end" : 22.22,
           "start" : 19.5,
-          "text" : "No,  he  had  to  work.  He  sent  his  logo.",
+          "text" : "No, he had to work. He sent his logo.",
           "wordCount" : 9
         },
         {
           "end" : 29.18,
           "start" : 23.4,
-          "text" : "Tell  him  you're  with  him.  He  works  too  hard.  I  told  him  the  car  needs  to  go  back  to  the  back  door  this  time.",
+          "text" : "Tell him you're with him. He works too hard. I told him the car needs to go back to the back door this time.",
           "wordCount" : 24
         },
         {
           "end" : 38.68,
           "start" : 31.44,
-          "text" : "Did  you  remember  to  lock  the  back  door  this  time?  The  gun  region  needs  attention  after  all  that  rain.  And  as  you  said,  I  was  going  to  lock  the  back  door  by  Tuesday.",
+          "text" : "Did you remember to lock the back door this time? The gun region needs attention after all that rain. And as you said, I was going to lock the back door by Tuesday.",
           "wordCount" : 33
         }
       ],
@@ -521,11 +570,11 @@
       "hypothesis" : "I was just saying to your father that we ought to go up to the lake again this summer like we used to when the children were small and everything took longer than it does now. The doctor said the tests came back fine but he wants to see you again in six weeks just to be sure and you should keep taking the tablets in the meantime.",
       "latency" : {
         "audioDuration" : 17.1676875,
-        "realTimeFactor" : 0.577942250987502,
-        "recognizerFirstTokenTime" : 1.5642399787902832,
-        "recognizerPipelineTime" : 9.921772003173828,
-        "timeToFirstWord" : 1.901605792,
-        "totalTime" : 9.921931958
+        "realTimeFactor" : 0.6351275639773848,
+        "recognizerFirstTokenTime" : 1.9708400964736938,
+        "recognizerPipelineTime" : 10.903550028800964,
+        "timeToFirstWord" : 2.381109375,
+        "totalTime" : 10.903671541
       },
       "reference" : "I was just saying to your father that we ought to go up to the lake again this summer like we used to when the children were small and everything took longer than it does now.\nThe doctor said the tests came back fine but he wants to see you again in 6 weeks just to be sure and you should keep taking the tablets in the meantime.",
       "semanticWordErrorRate" : 0,
@@ -533,13 +582,13 @@
         {
           "end" : 5.2,
           "start" : 0.02,
-          "text" : "I  was  just  saying  to  your  father  that  we  ought  to  go  up  to  the  lake  again  this  summer  like  we  used  to  when  the  children  were  small  and  everything  took  longer  than  it  does  now.",
+          "text" : "I was just saying to your father that we ought to go up to the lake again this summer like we used to when the children were small and everything took longer than it does now.",
           "wordCount" : 36
         },
         {
           "end" : 16.76,
           "start" : 11.68,
-          "text" : "The  doctor  said  the  tests  came  back  fine  but  he  wants  to  see  you  again  in  six  weeks  just  to  be  sure  and  you  should  keep  taking  the  tablets  in  the  meantime.",
+          "text" : "The doctor said the tests came back fine but he wants to see you again in six weeks just to be sure and you should keep taking the tablets in the meantime.",
           "wordCount" : 32
         }
       ],
@@ -580,11 +629,11 @@
       "hypothesis" : "Do you want the table by the window? It's quieter over there. That would be nice. Thank you, dear. The special today is the lampshade. What about you? Just a coffee. I'm not very hungry. The special today is the lampshade. Did you remember your tablets? Yes, they're in my bag. I never forget them now. The special today is the lampshade. Dr. Ellis says one at a time. Remember. I know. I'll take it when we get home.",
       "latency" : {
         "audioDuration" : 30.8925,
-        "realTimeFactor" : 0.6278318577972,
-        "recognizerFirstTokenTime" : 1.5454950332641602,
-        "recognizerPipelineTime" : 19.395174980163574,
-        "timeToFirstWord" : 1.87876625,
-        "totalTime" : 19.395295667
+        "realTimeFactor" : 0.6720407825523994,
+        "recognizerFirstTokenTime" : 1.6758710145950317,
+        "recognizerPipelineTime" : 20.76192593574524,
+        "timeToFirstWord" : 2.016564542,
+        "totalTime" : 20.761019875
       },
       "reference" : "Do you want the table by the window? It's quieter over there.\nThat would be nice. Thank you, dear.\nI'll have the soup. What about you?\nJust a coffee. I'm not very hungry.\nDid you remember your tablets?\nYes, they're in my bag. I never forget them now.\nDoctor Ellis said one at noon, remember.\nI know. I'll take it when we get home.",
       "semanticWordErrorRate" : 0.3125,
@@ -592,37 +641,37 @@
         {
           "end" : 6.46,
           "start" : 0.02,
-          "text" : "Do  you  want  the  table  by  the  window?  It's  quieter  over  there.  That  would  be  nice.  Thank  you,  dear.",
+          "text" : "Do you want the table by the window? It's quieter over there. That would be nice. Thank you, dear.",
           "wordCount" : 19
         },
         {
           "end" : 11.02,
           "start" : 7.52,
-          "text" : "The  special  today  is  the  lampshade.  What  about  you?",
+          "text" : "The special today is the lampshade. What about you?",
           "wordCount" : 9
         },
         {
           "end" : 14.4,
           "start" : 12.3,
-          "text" : "Just  a  coffee.  I'm  not  very  hungry.",
+          "text" : "Just a coffee. I'm not very hungry.",
           "wordCount" : 7
         },
         {
           "end" : 18.18,
           "start" : 15.240001,
-          "text" : "The  special  today  is  the  lampshade.  Did  you  remember  your  tablets?",
+          "text" : "The special today is the lampshade. Did you remember your tablets?",
           "wordCount" : 11
         },
         {
           "end" : 26.7,
           "start" : 19.800001,
-          "text" : "Yes,  they're  in  my  bag.  I  never  forget  them  now.  The  special  today  is  the  lampshade.  Dr.  Ellis  says  one  at  a  time.  Remember.",
+          "text" : "Yes, they're in my bag. I never forget them now. The special today is the lampshade. Dr. Ellis says one at a time. Remember.",
           "wordCount" : 24
         },
         {
           "end" : 30.52,
           "start" : 28.08,
-          "text" : "I  know.  I'll  take  it  when  we  get  home.",
+          "text" : "I know. I'll take it when we get home.",
           "wordCount" : 9
         }
       ],
@@ -663,11 +712,11 @@
       "hypothesis" : "Good morning, it's nice to see you today. I put the kettle on, so we can sit in the kitchen. Did you sleep well last night? Your sister called while you were resting.",
       "latency" : {
         "audioDuration" : 14.6635,
-        "realTimeFactor" : 0.47842221897909776,
-        "recognizerFirstTokenTime" : 1.5145859718322754,
-        "recognizerPipelineTime" : 7.015233993530273,
-        "timeToFirstWord" : 1.84006225,
-        "totalTime" : 7.015344208
+        "realTimeFactor" : 0.5123579097077778,
+        "recognizerFirstTokenTime" : 1.6403629779815674,
+        "recognizerPipelineTime" : 7.513105034828186,
+        "timeToFirstWord" : 1.9803825,
+        "totalTime" : 7.512960209
       },
       "reference" : "Good morning. It's nice to see you today.\nI put the kettle on, so we can sit in the kitchen.\nDid you sleep well last night?\nYour sister called while you were resting.",
       "semanticWordErrorRate" : 0,
@@ -675,25 +724,25 @@
         {
           "end" : 2.04,
           "start" : 0.02,
-          "text" : "Good  morning,  it's  nice  to  see  you  today.",
+          "text" : "Good morning, it's nice to see you today.",
           "wordCount" : 8
         },
         {
           "end" : 6.86,
           "start" : 3.7200012,
-          "text" : "I  put  the  kettle  on,  so  we  can  sit  in  the  kitchen.",
+          "text" : "I put the kettle on, so we can sit in the kitchen.",
           "wordCount" : 12
         },
         {
           "end" : 10.34,
           "start" : 8.62,
-          "text" : "Did  you  sleep  well  last  night?",
+          "text" : "Did you sleep well last night?",
           "wordCount" : 6
         },
         {
           "end" : 14.06,
           "start" : 12.040002,
-          "text" : "Your  sister  called  while  you  were  resting.",
+          "text" : "Your sister called while you were resting.",
           "wordCount" : 7
         }
       ],
@@ -702,12 +751,12 @@
   ],
   "summary" : {
     "fixtureCount" : 8,
-    "meanCriticalInfoScore" : 0.912037037037037,
-    "meanRealTimeFactor" : 0.5720646913009688,
-    "meanSemanticWordErrorRate" : 0.164305261299435,
-    "meanWordErrorRate" : 0.17735505660597572,
+    "meanCriticalInfoScore" : 0.8425925925925926,
+    "meanRealTimeFactor" : 0.5786632195156711,
+    "meanSemanticWordErrorRate" : 0.1982035663841808,
+    "meanWordErrorRate" : 0.21096850198412698,
     "totalDecodingFallbacks" : 5,
-    "totalSevereMisses" : 3,
-    "worstRealTimeFactor" : 1.0699207030620983
+    "totalSevereMisses" : 4,
+    "worstRealTimeFactor" : 0.7421780388865096
   }
 }

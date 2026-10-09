@@ -119,17 +119,33 @@ public struct CriticalInfoScorer {
 
     // MARK: - Classification
 
+    /// Which category a single token belongs to, or `nil` if it is not critical information.
+    ///
+    /// Public and static so the live view can tag words with the same rule the scorer grades with.
+    /// Two copies of this logic would drift, and the whole point of the tag is to show the user what
+    /// the score is about to be computed over.
+    ///
+    /// The token is expected to be *semantic* — folded by ``TextNormalizer/semanticTokens(_:)``, so
+    /// "fifteen" has already become "15". A raw surface token will still classify correctly for
+    /// negations and known names, but spelled-out numbers will slip through.
+    public static func category(
+        of token: String,
+        knownNames: Set<String>
+    ) -> CriticalInfoReport.Category? {
+        if TextNormalizer.isNegation(token) { return .negation }
+        if isNumber(token) { return .number }
+        if knownNames.contains(token) { return .name }
+        return nil
+    }
+
     private func category(
         of token: String,
         nameTokens: Set<String>
     ) -> CriticalInfoReport.Category? {
-        if TextNormalizer.isNegation(token) { return .negation }
-        if isNumber(token) { return .number }
-        if nameTokens.contains(token) { return .name }
-        return nil
+        Self.category(of: token, knownNames: nameTokens)
     }
 
-    private func isNumber(_ token: String) -> Bool {
+    private static func isNumber(_ token: String) -> Bool {
         guard let numberPattern = Self.numberPattern else { return false }
         let range = NSRange(token.startIndex..<token.endIndex, in: token)
         return numberPattern.firstMatch(in: token, range: range) != nil

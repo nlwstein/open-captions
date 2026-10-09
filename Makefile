@@ -20,7 +20,7 @@ REAL  := ami-meeting ami-meeting-far
 
 SOURCES := $(shell find Sources -name '*.swift' 2>/dev/null) Package.swift
 
-.PHONY: all build test test-clean test-hard test-real unit fixtures clean
+.PHONY: all build test test-clean test-hard test-real unit live live-file fixtures clean
 
 all: test
 
@@ -52,6 +52,20 @@ test-real: $(HARNESS)
 ## Runs the scoring and segmentation logic. No model, no audio, so it is fast enough to run often.
 unit:
 	swift test
+
+# ---------------------------------------------------------------------------------------------
+# Live capture
+# ---------------------------------------------------------------------------------------------
+
+## Captions the microphone until Ctrl-C — the demo the app's screen is designed from. Tag names
+## with NAMES="mum,david" so they are highlighted as they are spoken.
+live: $(HARNESS)
+	$(HARNESS) live --model-cache $(MODEL_CACHE) --names "$(NAMES)"
+
+## Replays one fixture through the live loop: same buffering, same turn rule, no person needed.
+## Usage: make live-file FIXTURE=family-dinner
+live-file: $(HARNESS)
+	$(HARNESS) live --from-file Fixtures/audio/$(FIXTURE).wav --model-cache $(MODEL_CACHE) --verbose
 
 # ---------------------------------------------------------------------------------------------
 # Building and fixtures

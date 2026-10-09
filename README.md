@@ -12,6 +12,7 @@ in a noisy room is unknown.
 ```bash
 swift run -c release caption-harness list
 swift run -c release caption-harness evaluate --all --model-cache .models
+make live                      # captions the microphone until Ctrl-C
 ```
 
 The first run downloads the model (~1.5 GB) into `.models/`.
@@ -28,11 +29,14 @@ The first run downloads the model (~1.5 GB) into `.models/`.
 | `make test-hard` | Only the degraded synthetic fixtures: crowd noise and multiple speakers |
 | `make test-real` | Only the recorded fixtures — real voices in a real room, close-mic and far-field |
 | `make unit` | The scoring and segmentation logic. No model, no audio, fast |
+| `make live` | Captions the microphone until Ctrl-C. `NAMES="mum,david"` highlights names |
+| `make live-file` | Replays one fixture through the live loop: `FIXTURE=doctor-visit` |
 | `list` | Show the fixtures and what each one covers |
 | `transcribe <file>` | One file, with timestamps and latency. `--json` for machine-readable output |
 | `evaluate <fixture>` | Score one fixture: WER, critical information, latency |
 | `evaluate --all` | Every fixture, plus a summary. `--output <file>` writes JSON |
 | `report <fixture>` | The markdown report on stdout, without running the `make` target |
+| `live` | Live capture from the microphone, or `--from-file` to replay a recording |
 
 Useful flags: `--model` (compare model sizes), `--vad` (voice-activity chunking on/off),
 `--turns` (print the visual blocks the app would show), `--auto-language`, `--no-prewarm`.
@@ -81,8 +85,10 @@ the harness's wall-clock numbers can be sanity-checked against WhisperKit's.
 ## First results
 
 Measured 2026-10-08 on an M2 Pro with `openai_whisper-large-v3_turbo`, whole-file decoding, one
-decode worker, on an otherwise idle machine. Raw output in `evaluations/baseline.json`; the rendered
-report in `reports/latest.md`.
+decode worker, on an otherwise idle machine. Raw output of the latest run is committed as
+`evaluations/baseline.json`; `make test` renders `reports/latest.md`, which is generated rather than
+committed. Because one fixture does not decode reproducibly (Finding 2), the means below are quoted
+as a range across runs.
 
 **Bottom line: the synthetic fixtures were overstating the difficulty, and adding recorded speech is
 what showed it.** A real four-person meeting — real voices, real room, real crosstalk — comes back at
@@ -100,20 +106,22 @@ the app's actual use: the same meeting through a tabletop microphone.
 | family-dinner | synthetic | **51.0%** | **77.8%** | **2** | 0.532 | 0 |
 | **ami-meeting** | **recorded**, close-mic | **16.0%** | **96.3%** | 0 | 0.470 | 0 |
 | **ami-meeting-far** | **recorded**, far-field | **26.1%** | **55.6%** | **1** | 0.444 | 0 |
-| ami-meeting-synth | synthetic twin | 9.2–12.6% | 67–100% | 0–1 | 0.4–1.0 | 1–5 |
+| ami-meeting-synth | synthetic twin | **9.2–38.7%** | **44–100%** | 0–1 | 0.4–1.0 | 5 |
 
 The last row is a range because that fixture does not decode reproducibly — see Finding 2. Every
 other row was bit-identical across runs.
 
-Mean WER 17.8%, mean critical information 87.0%, 3 severe misses, 5 decode fallbacks — all from the
-run above, so the two means move with the twin's instability by a point or so.
+Mean WER **17.8–21.1%**, mean critical information **84.3–87.0%**, 3–4 severe misses, 5 decode
+fallbacks. **The whole of that spread is the one synthetic twin.** Seven of the eight fixtures
+returned bit-identical word error rates across every run; `ami-meeting-synth` alone moved the mean
+by three points, because on its worst run it lost the back half of the conversation.
 
-Accuracy is deterministic **on the fixtures that decode cleanly**. Seven of the eight returned
-bit-identical word error rates across repeated runs. The eighth is `ami-meeting-synth`, which falls
-back to higher decoding temperatures every time it runs, and a fallback re-decodes with sampling —
-so its row is a sample rather than a measurement, and its score moved by 2.5 points of WER between
-runs here. The `Decode fallbacks` column is the tell: non-zero means that row should not be
-compared to a previous run's. Finding 2 is about why that fixture, of all of them, does this.
+That fixture falls back to higher decoding temperatures on every run — all five decode fallbacks in
+the summary belong to it — and a fallback re-decodes with *sampling* rather than greedily, so its
+row is a sample, not a measurement. The `Decode fallbacks` column is the tell: non-zero means that
+row should not be compared against a previous run's. Finding 2 is about why this fixture does it,
+and Finding 10 is about what the fallback ladder does when it runs out — which is the same
+mechanism, and the reason the swing is so large.
 
 Latency is never that stable, and did vary: an earlier run of this suite shared the machine with
 another build and reported real-time factors of 0.430–0.713 against 0.377–0.626 here, with identical
@@ -154,16 +162,23 @@ on a synthetic bed is not a number to plan around.
 other fixture has ever produced a single fallback. A fallback re-decodes with sampling instead of
 greedy search, so its result is not reproducible, and six runs of byte-identical input gave:
 
-| | across six runs |
+| | across seven runs |
 |---|---|
-| Word error rate | 9.2% – 12.6% |
-| Critical information | 100% five times, 66.7% once |
+| Word error rate | 9.2% – 38.7% |
+| Critical information | 100% five times, 66.7% once, 44.4% once |
 | Decode fallbacks | 1 – 5, never zero |
 
 Every other fixture reproduced bit-identically. That qualifies a claim made earlier in this README:
 accuracy is deterministic *except* where the decoder falls back, and the only fixture that falls back
 is the synthetic one. The `Decode fallbacks` column is the tell — a non-zero count means that row is
 a sample, not a measurement, and should not be compared against a previous run's.
+
+**The 38.7% run is the one that explains the rest.** Its transcript stops mid-sentence — "And I'm
+Andrew and I'm a marketing." — and the rest of the conversation is simply absent. That is the
+fallback ladder being spent: WhisperKit retries a failing window at rising temperatures, and when
+the last attempt fails too it returns that attempt anyway, which the segment seeker then judges
+silent and discards. Finding 10 works through the mechanism; it is the same failure the live loop
+has to defend against, and it is why one fixture can move the eight-fixture mean by three points.
 
 The instability is a property of the audio rather than of the options: it persisted at both levels
 tested. It is also not simply "many `say` voices", since `family-dinner` is three of them plus a bed
@@ -270,21 +285,18 @@ The 800 ms rule reproduced the scripted line boundaries exactly where the audio 
 where background speech filled the gaps between turns: `family-dinner` gave 7 blocks for 12 lines,
 `noisy-restaurant` 6 for 8. The segmentation logic is sound; the input is what defeats it.
 
-### Finding 7: latency is comfortable, but streaming is still unproven
+### Finding 7: whole-file latency is comfortable, and streaming needed a different model
 
 Real-time factor ran 0.377–0.626, so decoding keeps up with live speech with roughly 1.6× headroom
 even before the model is tuned. Time to first word was 1.86–1.92 s — suspiciously uniform across
 fixtures of very different difficulty, which is worth reading as a sign that this is what a
 whole-file decode costs rather than a property of the audio.
 
-**That comparison is not yet meaningful.** These figures are whole-file: the model waits for the
-entire clip before emitting anything, so "time to first word" here measures a full decode, not a
-streaming increment. Confirming or refuting the sub-200 ms the brief anticipates needs
-`AudioStreamTranscriber` driven from a live source, which is not wired up yet (see Known gaps). The
-headroom on an M2 Pro is also a proxy — an A17 Pro has a smaller Neural Engine, so treat these as
-an upper bound.
-
-The numbers are worth keeping as a regression baseline; they are not yet a verdict on the device.
+**These figures are whole-file**, so that 1.9 s is a full decode rather than a streaming increment.
+The sliding-window loop that answers the streaming question now exists — `make live` — and the
+answer is in [Finding 9](#finding-9-live-capture-cannot-use-the-model-the-report-measures): on this
+model it cannot keep up at all. The headroom on an M2 Pro is also a proxy, since an A17 Pro has a
+smaller Neural Engine; treat it as an upper bound.
 
 ### Finding 8: VAD chunking halves the severe misses, and costs almost nothing
 
@@ -312,6 +324,97 @@ shorter ones stops one bad stretch from steering the whole decode — which is t
 failure in Finding 1. It is currently opt-in (`--vad`); making it the default is the next change to
 land, and WhisperKit's energy detector is still the wrong detector — see Known gaps.
 
+## Live capture
+
+`make live` captions the Mac's microphone until Ctrl-C: finished turns stack up as blocks of text,
+the turn still being spoken sits beneath them in grey, and names, numbers and negations are coloured
+as they arrive. `make live-file FIXTURE=doctor-visit` replays a fixture through the identical loop,
+which is how the live path is tested without asking anyone to talk into a laptop.
+
+Nothing here is scored — a live conversation has no reference transcript. It answers the other
+question: whether the engine keeps up, and what that costs in accuracy.
+
+### Finding 9: live capture cannot use the model the report measures
+
+The report measures `large-v3-turbo`. The live loop cannot, and the difference is not a tuning
+preference:
+
+| Model | Mean WER | Mean critical info | Time to first word | Live-loop RTF |
+|---|---|---|---|---|
+| large-v3-turbo | 17.8% | 87.0% | 2054 ms | **3.40** |
+| small | 28.5% | 78.3% | 169 ms | **0.12–0.42** |
+| base | 32.1% | 71.6% | 171 ms | not run |
+
+Time to first word is from a 10-second clip; the RTF column is from the live loop itself, decoding a
+growing slice every few seconds. At 3.40 the queue of undecoded audio grows faster than the
+recognizer drains it, so the text falls further behind the conversation for as long as it runs: on
+`ami-meeting`, turbo took **170.9 s of wall clock to caption 46.7 s of audio**. `small` averages
+0.5–1.5 s per decode and keeps up with room to spare. `live` therefore defaults to `small` and says
+so on stderr; `--model` overrides it.
+
+**That switch is the main open risk in this design.** `small` costs 11 points of mean WER and 9
+points of critical information against turbo, and on `noisy-restaurant` it is far worse than a
+smooth degradation — decoded whole-file, it returns *nothing at all* for the 30.9-second fixture.
+
+### Finding 10: a decode that fails every retry returns its worst attempt, silently
+
+WhisperKit retries a window that fails its quality checks at rising temperatures. Two things follow
+that are easy to miss:
+
+- **The ladder ends and returns anyway.** `TranscribeTask` tries `0...temperatureFallbackCount` and
+  then returns whatever the last attempt produced, failed or not. Nothing is raised.
+- **Those retries sample, not decode.** Despite the name, `GreedyTokenSampler` is greedy only at
+  temperature 0: above that it scales the logits and takes a top-k multinomial draw
+  (`TokenSampler.swift:49-58`). So a fixture that needs fallbacks does not decode reproducibly run to
+  run, which is the effect `ami-meeting-synth` has shown all along.
+
+So a window the decoder cannot handle at any temperature comes back as a result, and it is the
+worst one. `SegmentSeeker` then judges it silent (`noSpeechProb > 0.6`, `avgLogProb <= -1.0`) and
+advances the seek by a full 30 seconds, dropping the audio outright.
+
+Note that fallbacks here are counted per *slice* by the live loop, so they are not comparable with
+the whole-file `Decode fallbacks` column in the report — a different window, and the loop's retry
+adds its own attempts. Finding 2's "no other fixture has ever produced a single fallback" is about
+the whole-file harness, and still holds there.
+
+Measured on a 15.1 s slice of `family-dinner` beginning at 25.2 s: **0 words, 5 fallbacks, three
+runs out of three.** The same audio from 24.5 s gave 36 words with no fallback at all, and from
+23.2 s gave 43. The loss is real and silent — and it is a property of *where the slice starts*, not
+of the audio in it.
+
+### Finding 11: the live loop now loses no speech at all
+
+Because the failure depends on the slice start rather than the audio, it is recoverable: when a
+decode returns no new words over audio the level meter called speech, the loop re-decodes from two
+seconds earlier. Repeating the identical decode would land on the identical failure; moving the
+start does not.
+
+Across all eight fixtures, that guard rescued 4 slices and lost 0:
+
+| Fixture | Audio | After the last word | Of that, heard as speech | Slices rescued |
+|---|---|---|---|---|
+| ami-meeting | 46.7 s | 0.7 s | 0.0 s | 0 |
+| ami-meeting-far | 46.7 s | 0.7 s | 0.7 s | 1 |
+| ami-meeting-synth | 46.7 s | 4.1 s | **0.0 s** | 1 |
+| doctor-visit | 46.3 s | 0.3 s | 0.1 s | 0 |
+| family-dinner | 40.3 s | 0.5 s | 0.5 s | 1 |
+| fast-speech | 17.2 s | 0.3 s | 0.3 s | 0 |
+| noisy-restaurant | 30.9 s | 0.4 s | 0.2 s | 1 |
+| quiet-single-speaker | 14.7 s | 0.4 s | 0.2 s | 0 |
+
+The two columns are the point of the measurement. "After the last word" counts audio the transcript
+never reached, which is trailing silence on most fixtures. "Heard as speech" is how much of that the
+level meter judged to be speech — the column that would be large if speech had been missed. It was
+**11.1 s on `family-dinner` before the guard existed, and 0.5 s after.** `ami-meeting-synth` shows
+the columns diverging the other way: 4.1 s of tail that the meter says is silent, confirmed by
+transcribing it standalone (`[BLANK_AUDIO]`, no fallbacks).
+
+One incidental result worth keeping: on `noisy-restaurant`, `small` **decoded whole-file returns
+nothing**, but the same model in the live loop returns a usable transcript — "Yes, they're in my
+bag. I never forget them now." and "I know. I'll take it when we get home." come back verbatim.
+Short slices plus the recovery guard beat one long window on the hardest fixture in the set. A fixed
+30-second window is not the neutral default it looks like.
+
 ## Layout
 
 ```
@@ -320,6 +423,7 @@ Sources/CaptionKit/
   Model/            Transcript, segments, words, latency — the app-facing model
   ASR/              WhisperKit engine wrapper, actor-isolated
   Segmentation/     Turn splitting on sustained silence
+  Live/             Capture sources, level meter, the sliding-window loop
   Fixtures/         Fixture discovery and metadata
   Evaluation/       Fuses the three measurements into one report
 Sources/CaptionHarness/   The CLI
@@ -351,6 +455,20 @@ speaking — so every speaker in that window collapses into a single block.
 macOS. That is right for bulk transcription and wrong for measuring latency, because the reported
 time then reflects many windows decoded in parallel rather than the wait a real user experiences.
 
+**The live loop decodes inline rather than on a timer.** A decode blocks the loop that reads audio,
+so chunks queue behind it and the session shows up as lag rather than as missing words. Falling
+behind is a display problem; dropping audio is a correctness problem, and only one of those can be
+fixed by waiting.
+
+**Live turns are committed, never revised.** A turn is final once at least 800 ms of audio has
+arrived after its last word with no further words in it — the same rule the offline harness scores
+with. The turn still
+being spoken is shown in grey and replaced on each decode, so the screen never rewrites text the
+user has already read. The commit point advances by *word start*, not word end, because each decode
+re-aligns the audio and the word on the boundary returns with timings shifted a few hundredths of a
+second later — which printed it twice ("…I'm the project manager." followed by a one-word turn
+reading "manager.").
+
 ## Known gaps
 
 - **VAD is energy-based, not Silero.** WhisperKit 1.1.1 ships only `EnergyVAD`. The design called
@@ -359,9 +477,15 @@ time then reflects many windows decoded in parallel rather than the wait a real 
   injectable through `WhisperKitConfig`, so Silero drops in behind the same interface. Not yet done.
   This matters more than it did before the first results: the `family-dinner` run showed that the
   dominant error is unsought speech, which is precisely what a speech-aware VAD could gate.
-- **No streaming measurement yet.** The harness measures whole-file latency. True streaming
-  latency needs a sliding-window loop; see the note in `WhisperEngine` about why WhisperKit's own
-  `AudioStreamTranscriber` cannot be driven from a file.
+- **Only `small` has been run live.** `base` was measured offline but never through the live loop,
+  and `large-v3-turbo` cannot keep up. Whether an intermediate model is the better trade — turbo's
+  accuracy at a rate the loop can sustain — is unresolved, and it is the first thing to settle.
+- **The live loop has never been run on real conversational audio.** Every number in Findings 9–11
+  comes from replaying the fixtures through `--from-file`. That exercises the buffering, the turn
+  rule and the recovery path, but not a microphone, a room, or a person who does not know they are
+  being captioned.
+- **The live RTF figures are from an M2 Pro.** An A17 Pro's Neural Engine is smaller, so the margin
+  between `small` at 0.42 and the wall at 1.0 is the number that must be re-measured on device.
 - **Nothing from the target environment is recorded yet.** The `ami-*` fixtures are real speech in a
   real room, which closes most of the gap, but they are a research meeting: studio headset
   microphones on four cooperative adults. They are not a dining room, and they are not a phone on a
@@ -384,6 +508,7 @@ time then reflects many windows decoded in parallel rather than the wait a real 
 ## Verifying
 
 ```bash
-make unit           # 88 tests, no model required
+make unit           # 103 tests, no model required
 make test           # runs the fixtures and writes reports/latest.md
+make live-file FIXTURE=family-dinner   # the live loop, replayed, with per-decode diagnostics
 ```

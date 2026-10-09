@@ -73,7 +73,11 @@ public struct TurnSegmenter: Sendable {
 
         func flush() {
             guard let first = current.first, let last = current.last else { return }
-            let text = current.map(\.text).joined(separator: " ")
+            // Each word's text is trimmed before joining: WhisperKit's word tokens carry the
+            // leading space of the byte-pair encoding (" Well"), so a plain join puts two spaces
+            // between every word. Punctuation stays attached to the word it followed.
+            let text = current.map { $0.text.trimmingCharacters(in: .whitespaces) }
+                .joined(separator: " ")
                 .trimmingCharacters(in: .whitespaces)
             guard !text.isEmpty else {
                 current = []

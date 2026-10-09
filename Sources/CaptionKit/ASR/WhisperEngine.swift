@@ -36,6 +36,24 @@ public struct WhisperEngineConfiguration: Sendable {
     /// which is wanted; the question is whether it also lets one bad window condition the next.
     public var usePrefillPrompt: Bool
 
+    /// How many times a decode may be retried at a higher temperature when it fails WhisperKit's
+    /// quality checks. WhisperKit's default is 5, and this keeps it.
+    ///
+    /// Tempting to set to 0 for live capture, since each retry is a whole extra decode — measured at
+    /// 16.5 s per decode against 2.6 s with no retries. **Do not.** With no retry, a window that
+    /// fails the check goes to `SegmentSeeker`, which judges it silent and advances the seek by a
+    /// full 30 seconds, discarding the audio rather than transcribing it. Measured on a 46.7 s
+    /// fixture: retries off, 22 of 26 decodes returned zero words and the last 21 seconds of the
+    /// conversation vanished from the transcript.
+    ///
+    /// Retries are necessary but not sufficient, and the second half is easy to miss.
+    /// `TranscribeTask` tries temperatures `0...temperatureFallbackCount` and then returns whatever
+    /// the *last* attempt produced, failed or not — nothing is raised. So a window the decoder
+    /// cannot handle at any temperature still comes back as a result, and it is the worst one. The
+    /// live loop therefore treats "no new words over audio that had speech in it" as a failure it
+    /// must recover from rather than a fact to accept; see ``LiveTranscriber``.
+    public var temperatureFallbackCount: Int
+
     public init(
         model: String = "openai_whisper-large-v3_turbo",
         downloadBase: URL? = nil,
@@ -45,7 +63,8 @@ public struct WhisperEngineConfiguration: Sendable {
         wordTimestamps: Bool = true,
         useVAD: Bool = false,
         prewarm: Bool = true,
-        usePrefillPrompt: Bool = true
+        usePrefillPrompt: Bool = true,
+        temperatureFallbackCount: Int = 5
     ) {
         self.model = model
         self.downloadBase = downloadBase
@@ -56,6 +75,7 @@ public struct WhisperEngineConfiguration: Sendable {
         self.useVAD = useVAD
         self.prewarm = prewarm
         self.usePrefillPrompt = usePrefillPrompt
+        self.temperatureFallbackCount = temperatureFallbackCount
     }
 }
 
@@ -209,6 +229,7 @@ public actor WhisperEngine {
             verbose: false,
             task: .transcribe,
             language: configuration.language,
+            temperatureFallbackCount: configuration.temperatureFallbackCount,
             usePrefillPrompt: configuration.usePrefillPrompt,
             detectLanguage: configuration.language == nil,
             skipSpecialTokens: true,

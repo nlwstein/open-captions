@@ -11,7 +11,7 @@ struct CaptionHarness: AsyncParsableCommand {
         Fixtures live under Fixtures/ as audio/<name>.wav with an optional \
         reference/<name>.txt and metadata/<name>.json.
         """,
-        subcommands: [List.self, Transcribe.self, Evaluate.self, Report.self]
+        subcommands: [List.self, Transcribe.self, Evaluate.self, Report.self, Live.self]
     )
 }
 
@@ -35,8 +35,10 @@ struct FixtureOptions: ParsableArguments {
 }
 
 struct ModelOptions: ParsableArguments {
-    @Option(name: .long, help: "WhisperKit model identifier. Defaults to large-v3-turbo.")
-    var model: String = "openai_whisper-large-v3_turbo"
+    /// Left optional so each command can carry its own default: the offline commands measure
+    /// large-v3-turbo, and `live` cannot use it (see `Live.effectiveModel`).
+    @Option(name: .long, help: "WhisperKit model identifier. Each command has its own default.")
+    var model: String?
 
     @Option(name: .long, help: "Directory that downloaded models are cached in.")
     var modelCache: String?
@@ -69,9 +71,16 @@ struct ModelOptions: ParsableArguments {
     )
     var noPrefill: Bool = false
 
-    func configuration() -> WhisperEngineConfiguration {
+    /// The model actually in use, given the command's own default.
+    static let offlineModel = "openai_whisper-large-v3_turbo"
+
+    func resolvedModel(default defaultModel: String = Self.offlineModel) -> String {
+        model ?? defaultModel
+    }
+
+    func configuration(default defaultModel: String = Self.offlineModel) -> WhisperEngineConfiguration {
         WhisperEngineConfiguration(
-            model: model,
+            model: resolvedModel(default: defaultModel),
             downloadBase: modelCache.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) },
             modelFolder: modelFolder,
             language: autoLanguage ? nil : "en",
@@ -324,14 +333,15 @@ struct Report: AsyncParsableCommand {
         await engine.unload()
 
         let names = cases.map(\.fixture.name)
+        let resolvedModel = modelOptions.resolvedModel()
         let invocation = "caption-harness report "
             + (names.count > 6 ? "--all" : names.joined(separator: " "))
-            + " --model \(modelOptions.model)"
+            + " --model \(resolvedModel)"
 
         let markdown = TestReport(
             evaluations: evaluations,
             command: invocation,
-            model: modelOptions.model,
+            model: resolvedModel,
             conditions: conditions
         ).markdown()
 

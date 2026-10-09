@@ -22,6 +22,23 @@ final class TurnSegmenterTests: XCTestCase {
         )
     }
 
+    /// WhisperKit's word tokens carry the leading space of the byte-pair encoding — " Well", not
+    /// "Well". Joining them verbatim put two spaces between every word, which is invisible in a
+    /// diff and very visible on screen. Found by running the live view, where the doubled spacing
+    /// showed up immediately.
+    func testWordsAreJoinedWithSingleSpaces() {
+        let turns = segmenter.turns(from: transcript([
+            word(" Well", 0.0, 0.4),
+            word(" this", 0.4, 0.8),
+            word(" is", 0.8, 1.0),
+            word(" the", 1.0, 1.2),
+            word(" kick-off", 1.2, 1.6),
+            word(" meeting.", 1.6, 2.0),
+        ]))
+        XCTAssertEqual(turns.count, 1)
+        XCTAssertEqual(turns.first?.text, "Well this is the kick-off meeting.")
+    }
+
     func testContinuousSpeechIsOneTurn() {
         let turns = segmenter.turns(from: transcript([
             word("hello", 0.0, 0.4),
