@@ -1,0 +1,8 @@
+{
+  "title": "Restaurant, two speakers over a crowd",
+  "scene": "restaurant table, strangers talking all around",
+  "speakerCount": 2,
+  "noise": "crowd babble (overlapping voices) + pink noise",
+  "knownNames": ["ellis"],
+  "notes": "Denser and louder than family-dinner: the crowd bed overlaps rather than taking turns, so the background is unintelligible as language but still speech-shaped. Contains two negations and a dosage number."
+}

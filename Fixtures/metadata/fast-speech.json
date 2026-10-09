@@ -1,0 +1,7 @@
+{
+  "title": "Fast speech, one speaker",
+  "scene": "one person talking quickly",
+  "speakerCount": 1,
+  "noise": "none",
+  "notes": "Stress test for throughput. Long unbroken utterances at 280 words per minute; watch the real-time factor."
+}

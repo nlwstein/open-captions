@@ -1,0 +1,8 @@
+{
+  "title": "AMI ES2002a — introductions",
+  "scene": "same meeting, one tabletop array microphone",
+  "speakerCount": 4,
+  "noise": "real room, far-field, reverberant",
+  "knownNames": ["laura", "david", "andrew", "craig"],
+  "notes": "AMI Meeting Corpus ES2002a, Array1-01, 55.60-102.30s. CC BY 4.0. Same words as ami-meeting."
+}

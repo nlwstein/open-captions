@@ -1,0 +1,8 @@
+{
+  "title": "Doctor visit, two speakers",
+  "scene": "consulting room, doctor and patient",
+  "speakerCount": 2,
+  "noise": "none",
+  "knownNames": ["margaret", "feldman", "lisinopril", "metformin"],
+  "notes": "The fixture that matters most. Dense in names, dosages, and negations, where a dropped word changes what the patient should do. Drug names are supplied via knownNames because they are not capitalised in speech."
+}

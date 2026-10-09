@@ -1,0 +1,8 @@
+{
+  "title": "AMI ES2002a — introductions",
+  "scene": "four-person meeting, headset microphones, real meeting room",
+  "speakerCount": 4,
+  "noise": "real room, occasional crosstalk",
+  "knownNames": ["laura", "david", "andrew", "craig"],
+  "notes": "AMI Meeting Corpus ES2002a, 55.60-102.30s. CC BY 4.0. Mix of all four headset mics."
+}

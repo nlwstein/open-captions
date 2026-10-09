@@ -1,0 +1,8 @@
+{
+  "title": "Quiet room, one speaker",
+  "scene": "living room, one person talking",
+  "speakerCount": 1,
+  "noise": "none",
+  "knownNames": ["sister"],
+  "notes": "Baseline. Establishes the accuracy ceiling for this pipeline; compare every other fixture against this one."
+}

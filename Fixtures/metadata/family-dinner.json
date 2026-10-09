@@ -1,0 +1,8 @@
+{
+  "title": "Family dinner, three speakers over babble",
+  "scene": "dining table, three people, background conversation",
+  "speakerCount": 3,
+  "noise": "babble + pink noise",
+  "knownNames": ["michael"],
+  "notes": "The real target scenario. Short turns separated by 2.5-4s gaps, with a babble bed built from other voices. Turn segmentation should recover roughly one block per line."
+}
