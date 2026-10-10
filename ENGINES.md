@@ -70,43 +70,57 @@ is also latched — it confirms once per session and then never again until `res
 confirmation callback hands back the *accumulated* transcript rather than the utterance. Both are
 workable, and both mean the turn-splitting logic stays ours, as it is now.
 
-## Speaker grouping: the streaming diarizer works on a headset and collapses on an array
+## Speaker grouping: **the far-field failure was the default model, not far-field**
 
-FluidAudio's LS-EEND is an end-to-end streaming diarizer, and it is fast enough to be free —
-**167× realtime**, 0.28 s for the 47.1 s fixture (165.9× on the far-field one). Speed is not the
-question. Whether it can hear the speakers is, and the answer depends entirely on which recording
-you give it.
+**Correction.** An earlier version of this section reported that LS-EEND groups a headset recording
+at 77% and a tabletop-array recording at 8%, and concluded that far-field diarization was the wall.
+That conclusion was wrong, and the reason it was wrong is worth keeping: `lseend` has four variants
+and **defaults to `ls_eend_ami`**, which is the single worst of them on distant microphones. Every
+figure below the headline came from a run that never passed `--variant`. Passing it changes the
+answer completely.
+
+| Variant | ami-meeting (headsets) | ami-meeting-far (array) |
+|---|---|---|
+| `ami` — **the default** | **10/13 — 77%** | **1/13 — 8%** |
+| `dihard3` | 9/13 — 69% | **9/13 — 69%** |
+| `callhome` | 8/13 — 62% | 8/13 — 62% |
+| `dihard2` | 8/13 — 62% | 9/13 — 69% |
+
+The default is the best on headsets and catastrophic on the array. Every other variant is
+*consistent* across the two channels, and `dihard3` is the one to use: 69% on both.
 
 Scored with `Scripts/diarization_score.py` against `Fixtures/annotations/`, which pairs each
 reference line with who actually said it. The score is computed after choosing the best possible
-relabelling of the diarizer's clusters, so it is an upper bound rather than a pessimistic one:
+relabelling of the diarizer's clusters, so it is an upper bound rather than a pessimistic one.
 
-| Fixture | Microphones | Turns correctly attributed | Speakers found of 4 |
-|---|---|---|---|
-| ami-meeting | individual headsets | **10 / 13 — 77%** | 4 |
-| ami-meeting-far | tabletop array | **1 / 13 — 8%** | 1 |
+**What `dihard3` misses on the far-field fixture is one speaker and two backchannels.** It finds
+three clusters where there are four — C is never found at all, and both of C's turns (30.39–31.57,
+31.57–33.11) land on D. The other two misses are D's sub-0.4 s backchannels ("Mm-hmm." 0.24 s and
+"Great" 0.35 s), one falling in a gap and one absorbed into the long turn around it. Every longer
+turn by every other speaker is correct. For a caption aid that is a much better failure profile than
+the number suggests: the losses are a quiet participant and two acknowledgements too short to be
+worth a colour of their own.
 
-On the headset recording the result is good, and the mapping came out clean — `s0→B, s1→A, s2→D,
-s3→C`, no collisions. The three misses are two of D's backchannels ("Mm-hmm.", 0.24 s; "Great",
-0.35 s, both absorbed into the long turn around them) and the one stretch where C and D genuinely
-overlap. For a caption aid that is close to the right failure profile: the misses are turns too short
-to be worth a colour of their own, and overlapping speech, which upstream documents as unsupported.
+**Two alternative explanations were tested and both are ruled out.**
 
-On the array recording it attributes almost nothing. It reports **4.2 seconds of speech in 47**,
-in three fragments at 38.5–43.4 s, and every other turn falls outside any predicted span. The one
-"hit" is the longest single turn sitting on top of one fragment.
+- *Audio level.* The obvious one, and the one this repo's Finding 3 would predict. It is not it: the
+  two recordings measure mean −30.5 dB against −29.7 dB, peak −1.5 dB on both.
+- *A single array element is unfairly hard.* `Array1-01` is **one element** of AMI's eight-element
+  circular array, not a beamformed mix, and a real phone does not hand the diarizer one raw capsule.
+  So all eight elements were downloaded and summed into a single channel, peak-normalised to the same
+  −1.5 dB, and re-run: **the scores are identical, variant for variant** (69/62/69/8). The diarizer's
+  behaviour does not depend on which element, or how many, it is given.
 
-**This is not a level problem**, which was the obvious alternative explanation and the one this
-repo's Finding 3 would predict. The two recordings measure the same: mean volume −30.5 dB against
-−29.7 dB, peak −1.5 dB on both. Same meeting, same content, same level, same model — 77% against 8%.
-That leaves the acoustics of a tabletop array in a reverberant room, and it is the case Finding 4
-already identifies as the one the app exists for.
+That second result is the reassuring one. The 69% is not an artifact of the channel we happened to
+pick, and it means the number is a property of the model and the room rather than of our fixture.
 
-Two things this does not settle. The `ami` variant was used because it is the tool's default for this
-corpus, and the other three variants — `dihard3`, `callhome`, `dihard2` — were not tried; if the
-model's training data is headset-only, this measures domain mismatch rather than a general weakness
-in far-field diarization. And nothing here is a comparison against WhisperKit's `SpeakerKit`, which
-is batch-only and was already ruled out on shape.
+**Speed is not a consideration either way** — 167× realtime on the headset fixture, 146–166× across
+all variants and channels. Diarization is free at this scale.
+
+**A footgun worth carrying forward:** the default variant is the one that fails. Anyone who runs
+`fluidaudiocli lseend` without `--variant` and tests on distant microphones will conclude, as this
+document did, that far-field diarization does not work. It is worth checking whether the library's
+Swift API exposes the same default.
 
 ## What was not measured
 
@@ -114,7 +128,9 @@ is batch-only and was already ruled out on shape.
   real-time factors will not.
 - **No streaming test of Parakeet TDT.** The 0.009 figure is a full-file batch decode. Feeding it a
   live loop of sliding windows is a different measurement and it has not been run.
-- **Only the default LS-EEND variant.** See above — the far-field collapse may be domain mismatch.
+- **One meeting, one 47-second window.** Every diarization number above comes from `ES2002a`. The
+  array-summing result says the channel is not the variable, but it does not say this meeting is
+  representative of AMI or of a family dinner.
 - **Only the default int8 encoder.** The CLI exposes `--encoder-precision int8-v2` and `--dual-decode-arbitration`;
   neither was tried.
 - **No word→speaker attribution.** Neither package provides it end to end; Parakeet exposes per-token
@@ -148,6 +164,14 @@ done
 # streaming EOU. NOTE: 160 is the tool's default and its worst setting —
 # add --chunk-size 320.
 swift run -c release caption-harness score --text-dir /tmp/hyp --json > /tmp/score.json
+
+# diarization. NOTE: --variant defaults to ls_eend_ami, which is the one that fails
+# on distant microphones. Always pass it.
+for v in ami dihard3 callhome dihard2; do
+  /tmp/fluidaudio-eval/src/.build/release/fluidaudiocli lseend \
+    Fixtures/audio/ami-meeting-far.wav --variant "$v" > "/tmp/far-$v.log"
+  uv run --no-project python -I Scripts/diarization_score.py ami-meeting-far "/tmp/far-$v.log"
+done
 ```
 
 `score` exists for exactly this: it takes text some other process produced and puts it through the
