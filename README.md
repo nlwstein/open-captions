@@ -646,8 +646,10 @@ loading a model, and a second recognizer could be scored by the same code.
 cannot tell who spoke — only that speech stopped and restarted. That is enough for the visual job
 and costs a fraction of real diarization, which matters when this runs continuously on a phone.
 WhisperKit does ship `SpeakerKit` if real speaker labels are ever wanted — and Finding 14 measured
-that the cheap alternative does not work on real speech, so `SpeakerKit` is not a nicety to reach
-for later. It is the only candidate left.
+that the cheap alternative does not work on real speech, so real diarization is not a nicety to reach
+for later. **A streaming one has now been measured, and it is cheap enough to be viable but not yet
+good enough to ship:** Parakeet's LS-EEND labels 10 of 13 turns correctly on the headset fixture and
+1 of 13 on the far-field one, at 167× realtime. See [ENGINES.md](ENGINES.md).
 
 **Word timings are required, not optional.** Without them a turn can only break at recognizer
 segment boundaries, and Whisper packs up to 30 seconds into one segment regardless of who was
@@ -697,8 +699,13 @@ reading "manager.").
   is always the turn on screen). The vendored copy's embedder and clustering types are `internal`,
   so a hand-rolled streaming wrapper on top of them is not available either. **A different engine is
   the alternative, and it has now been measured — see [ENGINES.md](ENGINES.md).** Parakeet's 0.6B TDT
-  model runs this fixture set at a real-time factor of 0.009, which means the compute budget has
-  stopped being what rules options out. Speaker grouping is still unmeasured.
+  model runs this fixture set at a real-time factor of 0.009, and its streaming LS-EEND diarizer
+  groups the headset fixture's turns at 77% while running 167× realtime. Neither number is the one
+  that matters: **on the far-field fixture the same diarizer attributes 1 turn in 13**, having found
+  1 speaker where there are 4 — and the two recordings measure the same level, so this is room
+  acoustics rather than gain. Speaker grouping now has a measurement, and what it measures is a
+  method that works on a headset and fails on a table. `Scripts/diarization_score.py` is what
+  produces the number; the annotations it scores against are the ones Finding 14 needed.
 - **Only `small` has been run live on speech.** `base` and `large-v3-turbo` have now been through the
   loop on non-speech (Finding 12), but neither has captioned a fixture: `base` was measured offline
   only, and turbo cannot keep up. Whether an intermediate model is the better trade — turbo's

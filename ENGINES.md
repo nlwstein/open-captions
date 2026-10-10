@@ -70,17 +70,55 @@ is also latched — it confirms once per session and then never again until `res
 confirmation callback hands back the *accumulated* transcript rather than the utterance. Both are
 workable, and both mean the turn-splitting logic stays ours, as it is now.
 
+## Speaker grouping: the streaming diarizer works on a headset and collapses on an array
+
+FluidAudio's LS-EEND is an end-to-end streaming diarizer, and it is fast enough to be free —
+**167× realtime**, 0.28 s for the 47.1 s fixture (165.9× on the far-field one). Speed is not the
+question. Whether it can hear the speakers is, and the answer depends entirely on which recording
+you give it.
+
+Scored with `Scripts/diarization_score.py` against `Fixtures/annotations/`, which pairs each
+reference line with who actually said it. The score is computed after choosing the best possible
+relabelling of the diarizer's clusters, so it is an upper bound rather than a pessimistic one:
+
+| Fixture | Microphones | Turns correctly attributed | Speakers found of 4 |
+|---|---|---|---|
+| ami-meeting | individual headsets | **10 / 13 — 77%** | 4 |
+| ami-meeting-far | tabletop array | **1 / 13 — 8%** | 1 |
+
+On the headset recording the result is good, and the mapping came out clean — `s0→B, s1→A, s2→D,
+s3→C`, no collisions. The three misses are two of D's backchannels ("Mm-hmm.", 0.24 s; "Great",
+0.35 s, both absorbed into the long turn around them) and the one stretch where C and D genuinely
+overlap. For a caption aid that is close to the right failure profile: the misses are turns too short
+to be worth a colour of their own, and overlapping speech, which upstream documents as unsupported.
+
+On the array recording it attributes almost nothing. It reports **4.2 seconds of speech in 47**,
+in three fragments at 38.5–43.4 s, and every other turn falls outside any predicted span. The one
+"hit" is the longest single turn sitting on top of one fragment.
+
+**This is not a level problem**, which was the obvious alternative explanation and the one this
+repo's Finding 3 would predict. The two recordings measure the same: mean volume −30.5 dB against
+−29.7 dB, peak −1.5 dB on both. Same meeting, same content, same level, same model — 77% against 8%.
+That leaves the acoustics of a tabletop array in a reverberant room, and it is the case Finding 4
+already identifies as the one the app exists for.
+
+Two things this does not settle. The `ami` variant was used because it is the tool's default for this
+corpus, and the other three variants — `dihard3`, `callhome`, `dihard2` — were not tried; if the
+model's training data is headset-only, this measures domain mismatch rather than a general weakness
+in far-field diarization. And nothing here is a comparison against WhisperKit's `SpeakerKit`, which
+is batch-only and was already ruled out on shape.
+
 ## What was not measured
 
 - **Nothing on a device.** All of this is an M2 Pro. The relative ordering should hold; the absolute
   real-time factors will not.
 - **No streaming test of Parakeet TDT.** The 0.009 figure is a full-file batch decode. Feeding it a
   live loop of sliding windows is a different measurement and it has not been run.
-- **No diarization at all.** Speaker grouping — the app's headline feature — is untouched by this
-  document, and Parakeet's own streaming diarizers have not been run against the speaker annotations
-  in `Fixtures/annotations/`.
+- **Only the default LS-EEND variant.** See above — the far-field collapse may be domain mismatch.
 - **Only the default int8 encoder.** The CLI exposes `--encoder-precision int8-v2` and `--dual-decode-arbitration`;
   neither was tried.
+- **No word→speaker attribution.** Neither package provides it end to end; Parakeet exposes per-token
+  timings and a diarizer timeline, and joining them is still ours to write.
 - **WhisperKit was not re-run today.** Its figures come from `reports/latest.md`, measured on the
   same machine and fixtures but in a previous session.
 
