@@ -321,8 +321,44 @@ This is surprising, and worth stating plainly: the design notes dismiss energy V
 for a noisy room, on the grounds that background noise keeps energy high so silence is never
 detected. On these fixtures it nonetheless helps, most likely because chopping a long window into
 shorter ones stops one bad stretch from steering the whole decode — which is the shape of the
-failure in Finding 1. It is currently opt-in (`--vad`); making it the default is the next change to
-land, and WhisperKit's energy detector is still the wrong detector — see Known gaps.
+failure in Finding 1. It is currently opt-in (`--vad`), and WhisperKit's energy detector is still
+the wrong detector — see Known gaps.
+
+#### The two rows that did not move did not move because the flag never ran
+
+**`--vad` is silently inert on any input of 30 seconds or less.** The two rows above that do not
+move at all — quiet-single-speaker and fast-speech — are the only two fixtures shorter than 30 s,
+and the flag cannot fire on an input that short. Their stillness is not evidence that VAD is safe on
+clean audio; it is evidence that VAD was never applied.
+
+The mechanism is one line. `WhisperKit.transcribe` decides whether to chunk at all before it looks
+at the strategy (`WhisperKit.swift:1028`):
+
+```swift
+let isChunkable = audioArray.count > featureExtractor.windowSamples ?? Constants.defaultWindowSamples
+switch (isChunkable, decodeOptions?.chunkingStrategy) {
+    case (true, .vad):
+```
+
+`windowSamples` is the model's own audio input width — `Constants.defaultWindowSamples` is
+`480_000`, which is exactly 30 s at 16 kHz (`Models.swift:1463`). Under that, `isChunkable` is
+false, the switch falls through to the unchunked path, and `chunkingStrategy: .vad` is discarded
+without a word. The flag is not degraded on short input; it is a no-op.
+
+Checked against the fixture lengths, the table splits exactly where that line predicts: the two
+fixtures under 30 s — quiet-single-speaker (14.7 s) and fast-speech (17.2 s) — are inert, and all
+three that moved, including the 1.4-point wobble on doctor-visit, are over it (46.3 s, 30.9 s,
+40.3 s). The split is too clean to be coincidence, and it is the reason `--vad` has **not** been made
+the default. A flag whose effect depends on how long someone has been talking is not a setting: on a
+live stream it means the decoder's behaviour changes at the 30-second mark, mid-sentence, with
+nothing in the output to say which mode produced it.
+
+The external evidence points the same way, which is what prompted the check: three independent
+projects report WhisperKit's VAD chunking failing *silently* on long meetings — duplicated
+sentences at fixed timestamps, truncation with no error, and empty windows for any clip ≤1.0 s. Those
+are reports rather than reproductions, and none is on our fixtures, so this is a reason to test
+before adopting rather than a reason to conclude. What is established here is narrower and does not
+rest on them: the flag does nothing at all below 30 s.
 
 ## Live capture
 
@@ -659,8 +695,10 @@ reading "manager.").
   still being spoken. Its open issues cluster on exactly the join between its segments and ours,
   including "the last turn is attributed to the wrong speaker" (a tail-padding effect, and the tail
   is always the turn on screen). The vendored copy's embedder and clustering types are `internal`,
-  so a hand-rolled streaming wrapper on top of them is not available either. See below for the
-  alternative.
+  so a hand-rolled streaming wrapper on top of them is not available either. **A different engine is
+  the alternative, and it has now been measured — see [ENGINES.md](ENGINES.md).** Parakeet's 0.6B TDT
+  model runs this fixture set at a real-time factor of 0.009, which means the compute budget has
+  stopped being what rules options out. Speaker grouping is still unmeasured.
 - **Only `small` has been run live on speech.** `base` and `large-v3-turbo` have now been through the
   loop on non-speech (Finding 12), but neither has captioned a fixture: `base` was measured offline
   only, and turbo cannot keep up. Whether an intermediate model is the better trade — turbo's
