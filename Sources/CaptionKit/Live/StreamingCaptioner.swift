@@ -105,9 +105,16 @@ public struct CaptionerStatus: Sendable {
     public var turns: Int = 0
 
     /// dBFS of the most recent chunk, and the same on a 0–1 display scale.
+    ///
+    /// Measured on the audio as captured, before ``automaticGain``. This is the level the microphone
+    /// actually delivered, which is what a smoke test needs to see.
     public var level: Float = -120
     public var normalizedLevel: Float = 0
     public var isSpeaking: Bool = false
+
+    /// Gain the automatic stage is applying, in dB. Zero when the stage is off or has decided the
+    /// audio needs nothing.
+    public var gainDb: Float = 0
 
     /// Seconds attributed to each Sortformer slot. A slot missing from this is one that has never
     /// been heard.
@@ -179,21 +186,63 @@ public struct CaptionerUpdate: Sendable {
 public final class StreamingCaptioner: @unchecked Sendable {
 
     public struct Options: Sendable {
-        /// Which recogniser runs. Defaults to what every number in ENGINES.md was measured with.
+        /// Which recogniser runs.
         ///
-        /// Two families are available and they are not close. **Parakeet EOU 120M** is the small
-        /// cache-aware streaming model this started on. **Parakeet Unified 0.6B** is five times the
-        /// parameters at the same latency, and FluidAudio's own sweep puts it at 2.37% WER on
-        /// LibriSpeech test-clean against 4.88% for EOU — with punctuation and capitalisation,
-        /// which EOU does not emit at all. It also hands out word timings with real end times
-        /// rather than starts only, which is the difference between inferring when a word stopped
-        /// and knowing.
-        public var asrVariant: StreamingModelVariant = .parakeetEou320ms
+        /// **Nemotron 0.6B at 1120 ms, since the far-field measurement in ENGINES.md.** On two
+        /// five-minute windows of DiPCo's table array it scores 44.3% and 31.3% WER against EOU
+        /// 120M's 76.0% and 52.0% — and, more to the point for a caption aid, it recovers 54.1% of
+        /// the reference content words against EOU's 23.8%. EOU's failures are almost entirely
+        /// *deletions*: on window 1 it drops 475 of 695 words and substitutes only 53.
+        ///
+        /// The cost is real and is not being waved away. 1120 ms of lookahead against EOU's 320 ms,
+        /// a five-times-larger model to download and hold, and roughly 2× real time against EOU's
+        /// 6×. It is still the right trade: a caption that arrives a second late is usable, and one
+        /// that omits two thirds of every sentence is not.
+        ///
+        /// 1120 ms and not 2240 ms: the two measured identical on WER and content recall, so the
+        /// longer one buys nothing for twice the latency. 560 ms costs 4.5 points to halve it again.
+        ///
+        /// Other families remain selectable. **Parakeet Unified 0.6B** is the same size at the same
+        /// latency and is close behind on WER (43.6% and 35.4%), but it is notably worse at
+        /// negations and numbers — 52.7% pooled against Nemotron's 69.1% — which is the wrong way
+        /// round to fail on an accessibility tool. EOU stays for its latency floor and because
+        /// every earlier number in ENGINES.md was measured with it.
+        public var asrVariant: StreamingModelVariant = .nemotron1120ms
 
-        /// 320 ms is the shortest EOU chunk that holds up: 4.88% WER at 19.25x realtime in
-        /// FluidAudio's own M-series benchmarks, against 8.23% at 160 ms. Ignored unless
-        /// `asrVariant` is an EOU variant, which carries its chunk size in its own name.
-        public var chunkSize: StreamingChunkSize = .ms320
+        /// Chunk size for the EOU recogniser, overriding what `asrVariant` is named for.
+        ///
+        /// Leave it `nil` to take the size from the variant name, which is the normal case:
+        /// `parakeetEou1280ms` should mean 1280 ms chunks. Set it only to run a variant at other
+        /// than its own size, which is what the 160-vs-320 measurement in ENGINES.md did — 320 ms
+        /// is the shortest that holds up, 4.88% WER at 19.25x realtime in FluidAudio's own M-series
+        /// benchmarks against 8.23% at 160 ms.
+        ///
+        /// Ignored unless `asrVariant` is an EOU variant; the other families carry their latency in
+        /// the variant and get no choice.
+        public var chunkSize: StreamingChunkSize?
+
+        /// The chunk size the EOU manager is actually built with: the explicit override if there is
+        /// one, otherwise whatever the variant is named for, otherwise 320 ms.
+        ///
+        /// This exists because the two used to disagree silently. The initialiser read
+        /// `chunkSize`, which defaults to `.ms320`, and ignored the variant name entirely — so
+        /// `--asr parakeet-eou-1280ms` built a 320 ms manager and produced a transcript *identical*
+        /// to `--asr parakeet-eou-320ms`. Identical output from two "different" settings is how the
+        /// bug was found, and it is a good reason never to let a flag be quietly inert.
+        public var resolvedChunkSize: StreamingChunkSize {
+            chunkSize ?? Self.namedChunkSize(of: asrVariant) ?? .ms320
+        }
+
+        /// The chunk size an EOU variant is named for. `nil` for every variant that does not carry
+        /// one, which is all of them except the three EOU tiers.
+        private static func namedChunkSize(of variant: StreamingModelVariant) -> StreamingChunkSize? {
+            switch variant {
+            case .parakeetEou160ms: return .ms160
+            case .parakeetEou320ms: return .ms320
+            case .parakeetEou1280ms: return .ms1280
+            default: return nil
+            }
+        }
 
         /// How long EOU must stay silent before an utterance is called finished. Upstream defaults
         /// to 1280 ms, which is longer than the app's own turn rule, so it is lowered to match.
@@ -212,6 +261,24 @@ public final class StreamingCaptioner: @unchecked Sendable {
 
         /// Silence that ends a turn even when the speaker has not changed.
         public var turnGapSeconds: Double = 0.8
+
+        /// Lift speech to the level the recogniser expects before handing it over.
+        ///
+        /// On, because the measurement is not close: nineteen points of WER on Nemotron between
+        /// DiPCo's far-field channel as captured and the same audio gained to a normal level, and
+        /// the README's Finding 3 finds the same lever on AMI. The stage only ever adds gain, so
+        /// audio that is already loud enough passes through untouched — which is the case that made
+        /// a fixed multiplier wrong.
+        ///
+        /// It applies to the recogniser only. The level meter and the diarizer see the audio as
+        /// captured, so what the TUI reports is what the microphone delivered and the diarization
+        /// figures in ENGINES.md still describe the input they were measured on.
+        public var automaticGain: Bool = true
+
+        /// Ceiling on the gain stage's output level, in dB above the input. Forwarded to
+        /// ``AutomaticGain/maxGainDb``; see that property for why it is a number worth measuring
+        /// rather than arguing about.
+        public var maxGainDb: Float = 32
 
         public init() {}
     }
@@ -240,7 +307,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
         self.options = options
 
         if options.asrVariant.rawValue.hasPrefix("parakeet-eou") {
-            self.asr = StreamingEouAsrManager(chunkSize: options.chunkSize,
+            self.asr = StreamingEouAsrManager(chunkSize: options.resolvedChunkSize,
                                               eouDebounceMs: options.eouDebounceMs)
             self.unifiedAsr = nil
             self.nemotronAsr = nil
@@ -320,6 +387,8 @@ public final class StreamingCaptioner: @unchecked Sendable {
         var status = CaptionerStatus()
         status.sourceDuration = source.origin().duration
         var meter = AudioLevelMeter()
+        var gain = AutomaticGain()
+        gain.maxGainDb = options.maxGainDb
         var recentUpdates: [Double] = []
         var busy = 0.0
         let started = Date()
@@ -334,7 +403,11 @@ public final class StreamingCaptioner: @unchecked Sendable {
             // Words first: every recogniser here buffers internally, so feeding a short chunk is
             // correct and it decodes whenever it has accumulated a full one. `appendAudio` alone
             // would only fill that buffer, hence the explicit `processBufferedAudio`.
-            if let buffer = Self.buffer(from: chunk, format: format) {
+            //
+            // The gain is applied here and not at the source, so that the meter above and the
+            // diarizer below both keep working on the audio as captured.
+            let heard = options.automaticGain ? gain.process(chunk) : chunk
+            if let buffer = Self.buffer(from: heard, format: format) {
                 try await asr.appendAudio(buffer)
                 try await asr.processBufferedAudio()
             }
@@ -363,6 +436,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
             status.level = meter.level
             status.normalizedLevel = meter.normalizedLevel
             status.isSpeaking = meter.isSpeaking
+            status.gainDb = options.automaticGain ? gain.currentGainDb : 0
             status.talkTime = Self.talkTime(of: built)
             status.contestedTurns = built.filter(\.isContested).count
             status.slotActivity = Self.slotActivity(

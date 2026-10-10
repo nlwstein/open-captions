@@ -54,14 +54,22 @@ struct Stream: AsyncParsableCommand {
     @Option(
         name: .long,
         help: """
-            Recogniser to run. Any StreamingModelVariant raw value, e.g. parakeet-eou320ms \
-            (default), parakeet-unified320ms, parakeet-unified1120ms, nemotron560ms.
+            Recogniser to run. Any StreamingModelVariant raw value. Defaults to nemotron-1120ms, \
+            which is what the far-field measurement in ENGINES.md chose; parakeet-eou-320ms is the \
+            low-latency option, and parakeet-unified1120ms the other 0.6B one.
             """
     )
-    var asr: String = "parakeet-eou-320ms"
+    var asr: String = "nemotron-1120ms"
 
-    @Option(name: .long, help: "Audio chunks, in ms, that the recogniser works on: 160, 320 or 1280.")
-    var chunkMs: Int = 320
+    @Option(
+        name: .long,
+        help: """
+        Override the EOU chunk size, in ms: 160, 320 or 1280. Omit it to use the size the chosen \
+        variant is named for, so `--asr parakeet-eou-1280ms` really does run at 1280 ms. Pass it \
+        only to run a variant at a size other than its own.
+        """
+    )
+    var chunkMs: Int?
 
     @Option(name: .long, help: "Silence, in ms, before an utterance is called finished.")
     var eouDebounceMs: Int = 800
@@ -109,6 +117,28 @@ struct Stream: AsyncParsableCommand {
     @Flag(name: .long, help: "Show engine timing on the status line all the time, not only when behind.")
     var stats: Bool = false
 
+    @Flag(
+        name: .long,
+        help: """
+        Turn off the automatic gain stage. It is on by default because the measurement is not \
+        close — nine and a half points of pooled WER on Nemotron, and nineteen on the harder of \
+        the two far-field windows, between DiPCo's channel as captured and the same audio gained \
+        to a normal level — but the stage is new, so being able to take it back out of the signal \
+        path is worth a flag.
+        """
+    )
+    var noGain: Bool = false
+
+    @Option(
+        name: .long,
+        help: """
+        Ceiling on the automatic gain stage, in dB. Exposed so the level can be swept rather than \
+        argued about: the achieved gain on DiPCo is this number, because the corpus wants more than \
+        any sane ceiling, so sweeping it sweeps how loud the recogniser is fed.
+        """
+    )
+    var maxGainDb: Float?
+
     func run() async throws {
         guard let size = try? TerminalSize.current() else {
             throw ValidationError("could not read the terminal size")
@@ -120,14 +150,18 @@ struct Stream: AsyncParsableCommand {
             throw ValidationError("--asr must be one of: \(known)")
         }
         options.asrVariant = variant
-        switch chunkMs {
-        case 160: options.chunkSize = .ms160
-        case 320: options.chunkSize = .ms320
-        case 1280: options.chunkSize = .ms1280
-        default: throw ValidationError("--chunk-ms must be 160, 320 or 1280")
+        if let chunkMs {
+            switch chunkMs {
+            case 160: options.chunkSize = .ms160
+            case 320: options.chunkSize = .ms320
+            case 1280: options.chunkSize = .ms1280
+            default: throw ValidationError("--chunk-ms must be 160, 320 or 1280")
+            }
         }
         options.eouDebounceMs = eouDebounceMs
         options.minTurnSeconds = minTurn
+        options.automaticGain = !noGain
+        if let maxGainDb { options.maxGainDb = maxGainDb }
 
         let captioner = StreamingCaptioner(options: options)
 
@@ -258,16 +292,21 @@ struct Stream: AsyncParsableCommand {
     /// The settings, as one line for the title. A smoke test that produces a surprising result is
     /// only useful if the settings that produced it are on screen.
     ///
-    /// `chunkMs`, not `chunkSize.durationMs`: upstream's own property returns 630 for `.ms320`,
+    /// `modelSubdirectory`, not `durationMs`: upstream's own duration returns 630 for `.ms320`,
     /// because that is how much audio the manager accumulates before each decode. Its shift is the
     /// 320 ms the mode is named for, and its own source comment says so — "~630ms of audio per
     /// chunk (but 320ms latency due to shift)". Printing 630 would have doubled the apparent
     /// latency on the one display built for judging latency.
+    ///
+    /// Read off the resolved options rather than the flag, so the title reports what is actually
+    /// running when `--chunk-ms` was not passed.
     private func settings(_ options: StreamingCaptioner.Options) -> String {
         let recogniser = options.asrVariant.rawValue.hasPrefix("parakeet-eou")
-            ? "EOU \(chunkMs) ms · debounce \(options.eouDebounceMs) ms"
+            ? "EOU \(options.resolvedChunkSize.modelSubdirectory) · debounce \(options.eouDebounceMs) ms"
             : options.asrVariant.rawValue
+        let gain = options.automaticGain ? "agc" : "no agc"
         return "\(recogniser) · min turn " + String(format: "%.2f s", options.minTurnSeconds)
+            + " · \(gain)"
     }
 }
 

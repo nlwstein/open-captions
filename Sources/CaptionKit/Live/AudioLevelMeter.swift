@@ -90,7 +90,9 @@ public struct AudioLevelMeter: Sendable {
         return sorted[index]
     }
 
-    private static func decibels(of chunk: [Float]) -> Float {
+    /// RMS of a chunk in dBFS. Shared with ``AutomaticGain`` so that the level meter and the gain
+    /// stage cannot disagree about what a decibel means.
+    static func decibels(of chunk: [Float]) -> Float {
         guard !chunk.isEmpty else { return -120 }
         var sum: Double = 0
         for sample in chunk {

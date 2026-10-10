@@ -1,10 +1,18 @@
 # Engine comparison: WhisperKit vs Parakeet
 
-**Bottom line: Parakeet's 0.6B TDT model is roughly 60× faster than the WhisperKit model the app
-currently uses, at comparable accuracy — and it wins clearly on the only *real* recordings in the
-fixture set.** That changes what the app can afford to do. It does not yet make Parakeet the engine:
-it loses badly on two synthetic fixtures, and the reason for that split is unresolved. Read the
-caveats before acting on the headline.
+> **Start here if you are asking which recogniser the app should use.** It ships **Nemotron 0.6B
+> streaming at 1120 ms with an automatic gain stage**, and the section that decided that is
+> [The recogniser was dropping two thirds of the words](#the-recogniser-was-dropping-two-thirds-of-the-words).
+> This document began as a two-engine comparison and grew into the record of how the choice was made.
+> The speaker-grouping sections below are still the evidence behind *that* decision, which has not
+> changed; the recogniser conclusions near the top have, and that section supersedes them.
+
+**What the fixture comparison found, and what it still supports:** Parakeet's 0.6B TDT model is
+roughly 60× faster than WhisperKit `large-v3-turbo` at comparable accuracy, and it wins clearly on the
+only *real* recordings in the fixture set — while losing badly on two synthetic ones, a split whose
+cause is still unresolved. That comparison is why the app moved off WhisperKit. It is not why the app
+chose the engine it now runs; that came from far-field audio, where every model in this table turned
+out to be level-starved rather than simply weak.
 
 Everything here was measured on the M2 Pro, against the eight fixtures, using this repo's own scorer
 (`caption-harness score`, see below) so the numbers are directly comparable to `reports/latest.md`.
@@ -42,6 +50,15 @@ fixtures are telling us about a real weakness that our real fixtures are too eas
 
 Both hypotheses survive this data. Nothing measured here separates them, and that is the main reason
 this is a comparison rather than a migration.
+
+> **⚠ The streaming Parakeet rows above are superseded, and the app no longer ships that engine.**
+> They are a mean over the eight fixtures, and they are not *wrong* — but they score a recogniser that,
+> on real far-field conversational audio, was transcribing **38% of the words that were actually said**
+> (23.8% on the harder of two five-minute windows). Nothing in this fixture set measured how much of
+> the reference *survived*, so a model that omits half of every sentence scored nearly as kindly as one
+> that transcribes it with a couple of errors. Jump to
+> [The recogniser was dropping two thirds of the words](#the-recogniser-was-dropping-two-thirds-of-the-words),
+> which measured that, and replaced both the engine and the input level as a result.
 
 ## What is solid regardless of that split
 
@@ -424,10 +441,468 @@ things remain true and neither was measured on a phone: DiPCo's best array is se
 fixed position on a table, and **two thirds of the turns in that setting have someone else talking
 over them**, which no diarizer can resolve on its own.
 
+## The recogniser was dropping two thirds of the words
+
+**Bottom line: Parakeet EOU 120M — the engine this document's table above points at, and the one the
+app was built around — transcribes 38.2% of the words that were actually said on real far-field
+conversational audio, and it fails by going silent rather than by guessing wrong.** On the harder of
+two DiPCo windows it deletes 475 of 695 reference words and emits nothing in their place. Moving to
+a 0.6B streaming model and lifting the input level takes pooled WER from **62.6% to 37.5%** and word
+recall from **38.2% to 63.9%** — the app goes from getting a bit over a third of the words to getting
+nearly two thirds.
+
+### Why the table at the top of this document did not catch it
+
+EOU scored 31.3% mean WER across the eight fixtures, and that number is not wrong — it answers a
+different question. Most of the fixture set is synthetic or close-talk, and a scorer that weighs a
+substitution and a deletion equally reports a model that omits half of every sentence almost as
+kindly as one that transcribes it with a couple of errors, especially when the reference is dense
+with "ummm" and "uhhh", which are cheap to hit and inflate the denominator. **Nothing in the fixture
+set measured how much of the reference survived**, and on real four-person dinner-table audio that is
+the number that decides whether a caption is usable.
+
+### How this was measured
+
+Two five-minute windows of DiPCo `S02`, channel `U01.CH1` — the far-field table array, not a close
+mic — scored against the corpus's official reference transcripts with `Scripts/dipco-recall-score.py`:
+
+| Window | Offset | Reference words | EOU raw WER | Nemotron +gain WER |
+|---|---|---|---|---|
+| 1 | 0–300 s | 695 | 76.0% | 44.3% |
+| 2 | 900–1200 s | 884 | 52.0% | 31.3% |
+
+**The two windows are not the same difficulty**, by 24 points on the same engine, so both are shown
+rather than pooled. Their spread is why the pooled column below is quoted alongside them and never
+instead of them.
+
+Every hypothesis is the harness's own streaming output, taken from the `--dump` JSON by
+concatenating turns in start-time order. Three metrics, because one hides the thing that matters:
+
+- **WER** — standard Levenshtein over all tokens, including disfluencies.
+- **Content recall** — the fraction of reference *content* words that survive. Content words are
+  everything that is not a filler or a function word, and only substitutions and deletions count
+  against it, so it cannot be gamed by emitting extra words. This is the "misses obvious words"
+  metric.
+- **Negation + number** — the tokens where an error changes what the reader believes was said.
+
+The scorer is `Scripts/dipco-recall-score.py`, stdlib-only so it needs neither the package nor a
+virtualenv, and every number in this section came out of it:
+
+```bash
+# One hypothesis. Prints a human line and a machine-readable POOL line.
+python3 -I Scripts/dipco-recall-score.py .fixture-build/wer/reference/dipco-s02.txt HYP.txt TAG
+
+# The harness's own output, per window. `--dump` writes turns; concatenate them in start-time order.
+swift run -c release caption-harness stream --from-file CH1_WINDOW.wav \
+  --asr nemotron-1120ms --speed 8 --max-seconds 300 --plain --dump out.json
+```
+
+`--max-gain-db 32` is the default; `--no-gain` takes the stage out of the path, and both appear in
+the tables below. The two references are `dipco-s02.txt` (window 1, 0–300 s) and `dipco-s02b.txt`
+(window 2, 900–1200 s), both cut from DiPCo `S02` channel `U01.CH1`.
+
+### The numbers
+
+Both windows pooled, 1 579 reference words:
+
+| Engine | W1 | W2 | Pooled WER | Content recall | Neg+num |
+|---|---|---|---|---|---|
+| Nemotron 0.6B, 1120 ms, fixed +33 dB | 44.3% | **31.3%** | 37.0% | **64.8%** | **69.1%** |
+| **Nemotron 0.6B, 1120 ms, `AutomaticGain` — what ships** | 44.3% | 30.8% | **37.5%** | 63.9% | 65.5% |
+| Parakeet Unified 0.6B, 1120 ms, +33 dB | 43.6% | 35.4% | 39.0% | 61.3% | 52.7% |
+| Parakeet Unified 0.6B, 2080 ms, +33 dB | 44.6% | 39.0% | 41.5% | 59.9% | 47.3% |
+| Parakeet Unified 0.6B, 1120 ms, raw | 47.1% | 38.6% | 42.3% | 59.1% | 52.7% |
+| Parakeet EOU 120M, 320 ms, +33 dB | 58.8% | 43.2% | 50.1% | 51.6% | 61.8% |
+| **Parakeet EOU 120M, 320 ms, raw — what the app shipped** | **76.0%** | **52.0%** | **62.6%** | **38.2%** | 43.6% |
+
+Window 1 only, because these runs were never repeated on window 2 — the offline decodes, the
+Whisper model and the chunk-size sweep:
+
+| Engine | WER | Content recall | Neg+num |
+|---|---|---|---|
+| Parakeet TDT v3, one 300 s batch decode, +33 dB | 43.5% | 55.5% | 57.6% |
+| Nemotron 0.6B, 2240 ms, +33 dB | 44.3% | 53.7% | 57.6% |
+| Parakeet TDT v3, one 300 s batch decode, raw | 45.9% | 50.2% | 54.5% |
+| WhisperKit `large-v3-turbo`, +33 dB | 46.6% | 50.9% | 48.5% |
+| Nemotron 0.6B, 560 ms, +33 dB | 48.8% | 47.3% | 60.6% |
+| WhisperKit `large-v3-turbo`, raw | 61.9% | 35.9% | 39.4% |
+
+### The deletion profile is the finding, not the WER
+
+On window 1, EOU produced **53 substitutions, 475 deletions and zero insertions**. That asymmetry is
+diagnostic. Read side by side with the reference, EOU's output is plainly tracking the same
+conversation — lasagna, oranges, Michigan all appear — it is simply not producing about half of it.
+
+A model that is *wrong* needs a better model. A model that is *absent* is more likely being fed,
+buffered or drained incorrectly, and that is worth ruling out before concluding anything about the
+model. The harness is the obvious suspect, because it replays a file faster than real time and could
+in principle be overflowing a buffer EOU is still reading. It is not the cause — see the two
+controls below — and the loss is in the recogniser.
+
+### Two controls, both confirmed by file hash
+
+**Feed rate is exonerated.** The same window, engine and gain, replayed at **1× instead of 8×**,
+produced a **byte-identical transcript** — 92 substitutions, 311 deletions, 6 insertions both times.
+`ctl_eou320_speed1.hyp.txt` and `g33lim_eou320.hyp.txt` have the same MD5 (`6877ef90…`). EOU loses
+those words at any speed.
+
+**The chunk-size flag was doing nothing.** `--asr parakeet-eou-1280ms` produced a transcript
+**byte-identical** to `--asr parakeet-eou-320ms` — same MD5 again, the same `6877ef90…` file. The
+cause was in the initialiser: it read `options.chunkSize`, which defaults to `.ms320`, and used the
+variant name only to decide *which family* to build, so all three EOU tiers silently built the same
+320 ms manager. The doc comment on `chunkSize` claimed the opposite, so the intent was always there;
+the code just did not do it. Fixed by resolving `chunkSize` against the variant name, with an
+explicit `--chunk-ms` still able to override.
+
+Re-run after the fix, the three tiers separate — the runs now label themselves `EOU 160ms`, `EOU
+320ms` and `EOU 1280ms`, where before all three said `320ms` — and the numbers are worth keeping for
+a second reason. **EOU's accuracy is not monotonic in chunk size:**
+
+| EOU chunk, gained | WER | Content recall | Deletions |
+|---|---|---|---|
+| 160 ms | 69.1% | 29.5% | 430 |
+| **320 ms** | **58.6%** | **42.7%** | 314 |
+| 1280 ms | 69.9% | 28.1% | 434 |
+
+More lookahead makes this engine *worse*, the opposite of what the Nemotron tiers showed. The reason
+is in the name: for an end-of-utterance model the chunk is how long it waits before deciding an
+utterance has ended, so a 1280 ms chunk makes it hold and then drop — 434 deletions against 314. The
+tier the app actually shipped, 320 ms, was already the best of the three. The flag was inert, so that
+was luck rather than judgement; it is now a measurement.
+
+Two settings that should differ producing **identical output** is the signature of an inert flag. A
+near-identical score would have looked like noise and been ignored.
+
+These three runs feed the harness a file with the +33 dB already baked in and leave the automatic
+stage in the path, where on that input it asks for 0.00 dB — which is why the 320 ms row reads 58.6%
+here and 58.8% in the tables above, the latter being the raw file through a fixed limiter. Two errors
+apart, and the three rows are directly comparable to each other, which is what the table is for.
+
+### Input level is as large a lever as the model
+
+DiPCo's far-field channel is roughly 30 dB below the level ASR front ends are usually trained on:
+mean −59.7 dBFS, peak −21.3 dBFS. FluidAudio does no amplitude normalisation at all —
+`Shared/AudioMelSpectrogram.swift` states `normalize: "NA"`, and its `logValue` is a plain
+`log(value + 2^-24)`, so whatever level arrives is the level the mel filterbank sees.
+
+Crossing the two engines with the level fix is the cleanest way to read how much of the complaint
+each one addresses. Both columns are pooled over the two windows and the same 1 579 reference words:
+
+| | no gain | +33 dB |
+|---|---|---|
+| Parakeet EOU 120M, 320 ms | 62.6% | 50.1% |
+| Nemotron 0.6B, 1120 ms | 47.0% | 37.0% |
+
+Read down either column and the two levers come out at nearly the same size. Swapping the model is
+worth **15.6 points** raw and 13.1 gained; fixing the level is worth **12.5 points** on EOU and 9.5 on
+Nemotron. Neither dominates the other. What separates them is cost: the level fix is the same model
+on the same real-time budget, which is why it is worth taking first.
+
+Two cells in that table are the before and after. EOU at 320 ms with no gain, 62.6%, is **what the app
+shipped**. Nemotron at 1120 ms with the automatic stage — which ties the fixed +33 dB rather than
+beating it — is what it ships now, at **37.5%**.
+
+It also helps every engine, not just these two. **Gain is worth more to EOU than any model exchange
+within its own family** — +33 dB takes it from 76.0% to 58.8% on window 1 and 52.0% to 43.2% on
+window 2, and the 17.2 points that buys on window 1 is more than the 11.3 points separating its best
+and worst chunk sizes.
+
+WhisperKit is the sharpest illustration that this is not a Parakeet quirk. `large-v3-turbo` is the
+strongest engine on the fixture set — **17.9% mean WER, the best of anything in this document** — and
+it does beat EOU on real audio as well, 61.9% against 76.0%. But gaining that same audio moves it
+15.3 points, to 46.6%, which is still **behind** the streaming 0.6B model's 44.3%. The engine that
+wins every synthetic fixture lands mid-pack on real audio, for exactly the same reason the worst one
+does: neither is being handed audio at a level it was trained on.
+
+**This is not a reason to apply 33 dB of gain to everything.** The README's Finding 3 records the
+opposite result on `ami-meeting-far`: boosting that clip made it worse (23.5% → 26.1%), because
+lifting the signal lifts the microphone's noise floor with it. DiPCo is an extreme case at −59.7
+dBFS mean. What the two results jointly say is that the app needs a gain stage that tracks speech
+level rather than a fixed multiplier.
+
+### The gain stage, and what it costs
+
+`AutomaticGain` aims a percentile of recent frame levels at −25 dBFS rather than detecting speech,
+because a detector cannot work on this audio: DiPCo spans only **−67 to −50 dBFS across thirty
+minutes**, so speech sits 13 dB above the room and any margin wide enough to exclude room tone also
+excludes most of the speech.
+
+The design is checked against the audio rather than tuned. Run the rule on raw DiPCo and it asks for
+**+32 dB**; run it on the same audio already boosted by 33 dB and it asks for **0.00 dB**. A fixed
+multiplier cannot produce both answers, and +32 dB is within a decibel of the +33 dB that was found
+best by hand — the constant falls out of the corpus rather than being fitted to it.
+
+Both windows, so the comparison is not a story about one of them:
+
+| Nemotron 0.6B, 1120 ms | Window 1 | Window 2 | **Pooled WER** | Content recall | Neg+num |
+|---|---|---|---|---|---|
+| No gain | 63.2% | 34.3% | **47.0%** | 54.7% | 50.9% |
+| Fixed +33 dB, tuned by hand on this corpus | 44.3% | 31.3% | **37.0%** | 64.8% | 69.1% |
+| `AutomaticGain`, never tuned to it | 46.0% | 30.8% | **37.5%** | 63.9% | 65.5% |
+
+Three things are in that table, and only one of them is the one you would expect.
+
+**Gain is worth 9.5 points pooled on this engine, and 12.5 on EOU** — on both windows, and it is the
+half of the fix that costs nothing: the same model on the same real-time budget. Swapping the model is
+worth 13.1 points at this level (EOU's 50.1% to Nemotron's 37.0%, both already gained) and 15.6 raw.
+The two together are what took the app from 62.6% to 37.5%.
+
+**The stage ties a hand-tuned constant rather than beating it.** 37.5% against 37.0% is five tenths
+of a point, eight words out of 1 579, and the ordering *flips* between the windows: the constant is
+1.7 points better on window 1, the stage 0.5 better on window 2. A claim that the adaptive stage is
+more accurate would not survive this table, and is not made.
+
+**What the stage buys is not needing to be tuned**, which was the actual problem. The +33 dB was
+found by sweeping this corpus. `ami-meeting-far` measures a peak of −17.13 dBFS — already usable —
+and handing *it* +33 dB makes it worse, so the constant that wins here loses elsewhere. Asked the same
+question, the stage answers differently on every recording it has been shown, and the answers track
+the audio rather than the corpus:
+
+| Clip | Character | p90 frame level | Gain the rule asks for |
+|---|---|---|---|
+| DiPCo `S02` | far-field table array, four speakers | −58.1 dBFS | **+32 dB** (clamped; it wants 33.1) |
+| `ami-meeting-far` | real, distant microphone | −42.7 dBFS | **+18 dB** |
+| `ami-meeting` | real, close table array | −38.6 dBFS | **+13 dB** |
+| `ami-meeting-synth` | synthetic, normal level | −19.3 dBFS | **0 dB** |
+
+That is a 32 dB span decided from the audio alone, with no branch on which file it is looking at. It
+generalises; a constant cannot.
+
+One honest note on that table: the stage is not simply a no-op on good audio. `ami-meeting` is a real
+close-array recording and it still asks for +13 dB, because the rule aims at −25 dBFS and that
+recording's speech sits below it. Whether that is the right target for audio that is already being
+transcribed well is not something this project has measured — the only clip where the stage's
+engagement was priced end to end is `ami-meeting-far`, below.
+
+**The honest cost.** That +18 dB still costs 4 points on `ami-meeting-far` (21.8% → 26.1%): on an
+already-usable clip, lifting the signal lifts the microphone's noise floor with it. The clip is 119
+reference words, so the whole difference is three deletions, but it reproduces an independently
+measured result in the same direction and should be read as real rather than as noise.
+
+The stage stays on by default because of the size of the two effects rather than their signs. Where it
+engages hard it is worth **9.5 points**, on audio the app would otherwise fail on completely. Where it
+costs something it costs 4 points on a clip that was already at 22%.
+`--no-gain` takes it back out of the signal path.
+
+### The gain ceiling is a plateau, and the clamp turns out to be load-bearing
+
+`maxGainDb` is the one constant in the stage that could have been fitted to this corpus, so it was
+swept across **both** windows rather than argued about — 26, 28, 30, 32, 34 and 40 dB:
+
+| `maxGainDb` | 26 | 28 | 30 | **32 (shipped)** | 34 | 40 |
+|---|---|---|---|---|---|---|
+| Window 1 WER | 46.8% | 46.6% | 45.6% | **46.0%** | 46.2% | 46.9% |
+| Window 2 WER | 31.2% | 30.8% | 31.0% | **30.8%** | 31.0% | 30.3% |
+| **Pooled WER** | 38.1% | 37.7% | 37.4% | **37.5%** | 37.7% | 37.6% |
+| Pooled content recall | 63.6% | 64.1% | 63.9% | **63.9%** | 63.6% | 63.6% |
+| Pooled errors, of 1 579 | 601 | 596 | 591 | **592** | 595 | 594 |
+
+**The entire range, 26 to 40 dB, spans seven tenths of a point — ten errors.** There is no peak to
+find, and the two windows do not even agree on which end is better: window 1 prefers 30 dB, window 2
+prefers 40. A parameter whose optimum moves when you change the window is not a parameter worth
+tuning, and the honest reading is that **this corpus does not constrain it at all.** That is a
+negative result and is recorded as one: 32 dB is kept because it sits in a band where nothing matters,
+not because it was found to be best.
+
+It is worth saying plainly why the small differences are not noise either. Three independent pairs of
+runs — the same window at 1× and at 8×, at 1× and at 20×, and twice at 32 dB — produced
+**byte-identical transcripts**, the last pair sharing MD5 `720fff068f7b…`. Run-to-run variation is
+exactly zero, so a 0.4-point difference between neighbouring values is reproducible rather than
+jitter. Reproducible is not the same as *meaningful*: the ordering simply reverses on the other
+window, which is what fitting looks like from the inside.
+
+What the sweep *did* turn up is a mechanism, and it explains why the clamp is worth having even
+though this corpus cannot show it. At 40 dB the clamp stops binding — the corpus asks for 33.1 dB, so
+the stage *tracks* its target instead of resting against its ceiling — and the character of the
+applied gain changes completely. Measured across window 1:
+
+| `maxGainDb` | gain p5 | p50 | p95 | **wobble** | slew rate |
+|---|---|---|---|---|---|
+| 32 | 31.33 | **32.00** | **32.00** | **0.67 dB** | 0.000 dB/s |
+| 40 | 31.33 | 34.02 | 36.21 | **4.87 dB** | 0.101 dB/s |
+
+At 32 dB the gain is pinned: its median and its 95th percentile are both exactly the ceiling, and it
+moves two thirds of a decibel across five minutes. At 40 dB it is genuinely tracking, moving nearly
+**5 dB** while it transcribes. So on audio this quiet the clamp is not a safety limit the corpus
+merely happens to sit against — it is what converts a *tracking* stage into a *constant* one.
+
+The obvious inference is that tracking is worse, and window 1 says so: 46.9% against 46.0%, its worst
+content recall of the sweep. **The pooled number says otherwise** — 40 dB scores 37.6% against 32 dB's
+37.5%. Window 2 improves by as much as window 1 loses (30.3% against 30.8%) and the two cancel. That
+is recorded here because the window-1 result alone is a perfectly plausible 0.9-point story, and it
+would have been wrong.
+
+So the clamp is load-bearing in principle and inert in practice on this corpus. It would start to
+matter on audio quieter than DiPCo's −59.7 dBFS mean, where the gain the rule asks for exceeds any
+sensible ceiling — a regime this project has not measured against.
+
+### The spread gate does not do what its name says
+
+`AutomaticGain` has a second guard, `minimumSpreadDb`, meant to stop it amplifying a room with nobody
+in it: speech modulates, a silent room does not, so a large spread between the 90th and 10th
+percentile of frame levels is evidence of speech. It was designed against two synthetic fixtures —
+hum plus hiss at 0.01 dB, white noise at 0.37 dB — and a 2.0 dB gate sits comfortably above both.
+
+Then a real room was recorded, and it comes in at **3.15 dB** — *above* the gate. A room with nobody
+in it varies more than white noise does, because rooms contain chairs and distant traffic and people
+breathing. So the guard does not separate silence from speech. It separates **stationary** noise — a
+fan, a hum, a hiss — from everything else, and on ordinary room tone it does not fire at all: 96
+seconds of it is tracked as something to aim at, and the rule asks **21.4 dB**.
+
+The gate is left where it is, because the alternative was costed. Raising it to 5 dB would exclude
+that room tone, and the margin it has to work in is **1.34 dB** — 3.15 against the quietest real
+speech window's 4.49, measured across all ninety of the corpus's twenty-second windows. That is the
+entire gap available, and 5 dB does not sit cleanly inside it: a twentieth of those windows already
+fall below 5 dB, so a gate wide enough to exclude an empty room starts closing on real speech, and its
+cost would land on the audio the component exists to rescue.
+
+What makes that trade acceptable is that the thing the gate fails to prevent does not matter, which is
+a measurement rather than a hope. 96 seconds of recorded room tone, taken through the stage at its
+full 21.4 dB, was transcribed by **Nemotron, Parakeet EOU and Parakeet Unified: zero words from all
+three**, and zero from the same file with the stage bypassed. Amplifying an empty room wastes power
+and invents nothing. The gate's weakness is an exposure worth documenting, not a defect worth trading
+real speech to fix.
+
+### A Mac buys headroom, not accuracy
+
+The obvious use of a Mac is to stop streaming altogether: transcribe a growing window with a large
+batch model and accept a second or two of latency. That was worth testing properly, because if
+offline were substantially better it would change the design. **It is not.**
+
+On window 1, same gain, same window:
+
+| | WER | Content recall | Deletions |
+|---|---|---|---|
+| Parakeet TDT v3, one 300 s batch decode — full context, no latency constraint | 43.5% | 55.5% | 103 |
+| Nemotron 0.6B streaming, 1.12 s of lookahead | 44.3% | 54.1% | 223 |
+
+**Eight tenths of a point.** The offline decode is marginally ahead on WER, marginally behind on
+content recall, and its error profile is different — far fewer deletions, more substitutions. What
+it is not is *better by a margin worth having*.
+
+That is the most important number in this section, because it relocates the problem. The remaining
+error is not something a bigger model or more context fixes — it is a property of *this audio*: a
+four-person dinner party recorded far-field, with heavy overlap, disfluency and cross-talk. The same
+family scores 5.9% on `ami-meeting`, which is a real recording through a good close array, and 0–4%
+on the clean synthetic fixtures; on this it scores 37%. **Choosing a better engine has stopped being
+the lever; the lever is the audio and the level.**
+
+**What it actually costs on a Mac, measured on two of them.** The same binary and the same five-minute
+window, on this M2 Pro and on an M4 Mac mini:
+
+| Machine | Background load | Nemotron 1120 ms | EOU 320 ms |
+|---|---|---|---|
+| **M4 Mac mini** | desktop running, nothing else | **7.59×** | 8.85× |
+| M2 Pro laptop | idle | 6.10× | 7.06× |
+| M2 Pro laptop | macOS Photos analysis running | **3.88×** | 4.75× |
+
+In real-time-budget terms those three rows cost **13%**, **16%** and **26%** of one core respectively.
+Figures are the median of three runs where three were taken; the M4 spread was under 1%.
+
+The M4 is about **25% faster than the M2 Pro**, and it is as reproducible as the transcripts are:
+three consecutive runs of each engine gave 7.59, 7.59, 7.60 and 8.80, 8.91, 8.84. This is a machine
+that runs the whole pipeline — 0.6B recogniser, streaming diarizer and gain stage — in about an
+eighth of the time the audio takes to arrive.
+
+**Read the third row carefully, because it is the one a real user will hit.** macOS's
+`mediaanalysisd` and its on-device inference service were between them consuming most of a core while
+that row was measured — Photos doing its background analysis, nothing to do with this app — and
+throughput fell by a third. Nothing about the engine changed; the machine was simply busy. A captioner
+sharing a laptop with the operating system still has nearly 4× the speed it needs, so the conclusion
+holds, but the margin is not as unconditional as a single idle-machine figure implies.
+
+Latency moves more than throughput does, and that is the number to watch. The worst single processing
+pass over a five-minute window is **0.13 s** on the M4, **0.16 s** on the idle M2 Pro and **0.40 s** on
+the loaded one — a two-and-a-half-fold swing from background load alone. The engine carries 1120 ms of
+lookahead, so none of those stall a caption. But one earlier M4 run reported a **1.26 s** pass, and
+three immediate repeats on the same machine with the same binary reported 0.13 s every time. Something
+outside the app can produce a stall an order of magnitude above the normal worst case, and a caption
+that freezes for a second is more visible to the person reading it than a caption that arrives a
+second late. That is the failure mode worth instrumenting on the real hardware.
+
+### Thirty minutes without a leak
+
+Every figure in this document up to this point comes from a five-minute window. A caption reader
+leaves the thing on for a meal, so the shipping configuration was run over the full **thirty minutes**
+of DiPCo `S02` in one session and watched for the two failures only time reveals:
+
+| | 30-minute run |
+|---|---|
+| Audio transcribed | 1 800 s (30.0 min), one continuous session |
+| Words emitted | 3 995 |
+| Turns | 402 |
+| Slowest single processing pass | 0.41 s |
+| RSS while models load | 1 527 MB |
+| RSS, settled → final | 1 067 MB → **977 MB** |
+
+**It finishes 91 MB lighter than it settled.** Memory peaks while the models load and then declines
+across the rest of the run, so there is no upward trend to fit a leak to. Nothing degrades with time:
+the slowest single processing pass over half an hour is **0.41 s**, within the 1120 ms of lookahead the
+engine carries, which means the five-minute figures are not a warm-up effect that decays once a
+session gets long.
+
+One caveat: that run executed alongside other work on the same laptop, so its throughput — 3.5× real
+time — is contended and understates the machine. The memory result does not depend on how much of the
+CPU was free. **The latency result does**, and that run's 0.41 s is itself an example — see the
+contention row in the Mac table above, where the same window on the same laptop produced a worst pass
+of 0.16 s idle and 0.40 s busy.
+
+### Chunk size: 1120 ms is the sweet spot
+
+Nemotron at three tiers, all on the gained window-1 audio:
+
+| Chunk | WER | Content recall | Neg+num |
+|---|---|---|---|
+| 560 ms | 48.8% | 47.3% | 60.6% |
+| **1120 ms** | **44.3%** | **54.1%** | 57.6% |
+| 2240 ms | 44.3% | 53.7% | 57.6% |
+
+1120 ms and 2240 ms are the same accuracy, so **1120 ms is free**: identical quality at half the
+latency. 560 ms costs 4.5 points of WER for half the latency again, which is the wrong trade for a
+caption reader who is already reading a second behind.
+
+### What this changes for the app
+
+1. **The default recogniser has changed.** Nemotron 0.6B at 1120 ms, not the 120M EOU model at
+   320 ms. Pooled across both windows: **62.6% → 37.5% WER and 38.2% → 63.9% content recall** — the
+   app went from getting a bit over a third of the words to getting nearly two thirds of them.
+   The cost is latency: 1120 ms of lookahead instead of 320 ms. The ASSETS 2026 caption-latency
+   study found latency measurably affects deaf and hard-of-hearing viewers, which is the audience
+   this app serves, so this is a real trade and not a free win. Nemotron's 560 ms tier is the escape
+   hatch if it turns out to read badly, at 4.5 points of WER.
+2. **The input gain stage is built and on by default.** Worth **9.5 points of pooled WER on the
+   engine that ships, and 12.5 on the one it replaced** — the same order as swapping the model, not an
+   afterthought to it — and it matches a hand-tuned fixed gain (37.5% against 37.0%) *without* being
+   tuned to this corpus. That last part is the whole
+   point: the constant that wins here loses on an already-usable clip, and a device in someone's
+   kitchen cannot be handed a constant chosen on a research corpus. It costs 4 points on that one
+   clip. See above.
+3. **An M4 Mac is sufficient, and measured on an actual M4.** The shipping configuration runs
+   **7.6× faster than real time at 13% of a real-time budget** on an M4 mini and 6.1× on an M2 Pro,
+   so roughly seven eighths of the machine is idle while it listens, with the diarizer already inside
+   that figure. Even sharing the machine with macOS doing its own background work, it held 3.9×.
+   What a Mac does *not* buy is accuracy: see the offline comparison above.
+4. **What is still unmeasured on the Mac is heat, not speed.** Every number here is an M2 Pro laptop
+   or an M4 mini, both of which have a fan. The target machine is a fanless M4 MacBook Air, and
+   nothing in this project has run long enough on one to know whether sustained transcription
+   throttles. That is the one hardware question left, and it needs the Air rather than a proxy.
+5. **Latency, not throughput, is the metric that will need a decision.** A worst-case processing pass
+   of 0.13–0.40 s is invisible under 1120 ms of lookahead; the single 1.26 s stall observed was not.
+   If the Air throttles, that is the number that will show it first, and it is the one the smoke test
+   should watch.
+
+
 ## What was not measured
 
-- **Nothing on a device.** All of this is an M2 Pro. The relative ordering should hold; the absolute
-  real-time factors will not.
+- **Nothing on a device, and on a Mac only one question is left.** The streaming figures are an M2
+  Pro; one engine's rows were reproduced on an M4 mini to within half a point, so the relative
+  ordering travels. What has not been run is a long session on the actual target hardware — a fanless
+  M4 MacBook Air — so whether sustained transcription throttles there is still open. That is the one
+  hardware question remaining, and it needs the Air rather than a proxy.
+- **No home recording.** The gain stage was validated on `ami-meeting-far`, a MacBook microphone and
+  96 seconds of room tone. It has never heard a kitchen, a television in the next room, or a
+  dishwasher — the conditions the app exists for. Its guards are designed for those cases and the
+  design is argued from the audio, but argued is not measured.
 - **No streaming test of Parakeet TDT.** The 0.009 figure is a full-file batch decode. Feeding it a
   live loop of sliding windows is a different measurement and it has not been run.
 - **Three meetings of 171, all AMI, plus all ten DiPCo sessions.** The AMI meetings cover two of the
@@ -451,8 +926,13 @@ over them**, which no diarizer can resolve on its own.
   neither was tried.
 - **No word→speaker attribution.** Neither package provides it end to end; Parakeet exposes per-token
   timings and a diarizer timeline, and joining them is still ours to write.
-- **WhisperKit was not re-run today.** Its figures come from `reports/latest.md`, measured on the
-  same machine and fixtures but in a previous session.
+- **WhisperKit only on window 1.** Its fixture-set figure comes from `reports/latest.md`, measured on
+  the same machine in a previous session; its DiPCo figures are window-1 only. So are the offline
+  Parakeet TDT decode, the 560 ms and 2240 ms Nemotron tiers and the 320 ms Unified tier — the window-1
+  table is where one-off runs live, and none of those rows should be read as pooled.
+- **The offline decode was window-1 only.** The full-context comparison that concludes a Mac buys
+  headroom rather than accuracy rests on one window of one corpus. It is a large enough effect
+  (0.8 points) that a second window would not plausibly reverse it, but it was not run.
 
 ## Fairness caveat: the two real-time factors are not the same measurement
 

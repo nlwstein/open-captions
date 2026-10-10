@@ -1,7 +1,7 @@
 # live-caption
 
 On-device live captioning for an elderly user: a giant start/stop button and large auto-scrolling
-text, running WhisperKit on the Neural Engine. No settings, no model pickers.
+text, running entirely on the machine — no cloud, no account, no settings, no model pickers.
 
 **This repository currently contains the measurement harness, not the app.** The app is
 deliberately not started yet — there is no point building a UI around a pipeline whose accuracy
@@ -17,7 +17,7 @@ make live                      # the older Whisper loop, no speaker colours
 ```
 
 `make stream` is the one to sit in front of. It is the pipeline the app is being built around —
-Parakeet EOU for words, streaming Sortformer for speakers — running off the microphone, so it shows
+Nemotron 0.6B for words, streaming Sortformer for speakers — running off the microphone, so it shows
 what the app will feel like rather than what it scores. `make stream-file FIXTURE=family-dinner`
 replays a recording through the identical pipeline with no one needed at the microphone.
 
@@ -37,7 +37,7 @@ The first run downloads the model (~1.5 GB) into `.models/`.
 | `make unit` | The scoring and segmentation logic. No model, no audio, fast |
 | `make live` | Captions the microphone until Ctrl-C. `NAMES="mum,david"` highlights names |
 | `make live-file` | Replays one fixture through the live loop: `FIXTURE=doctor-visit` |
-| `make stream` | The app's engine live: Parakeet EOU + Sortformer, one colour per speaker |
+| `make stream` | The app's engine live: Nemotron 0.6B + Sortformer, one colour per speaker |
 | `make stream-file` | The same, replayed: `FIXTURE=family-dinner SPEED=4` to hurry it |
 | `list` | Show the fixtures and what each one covers |
 | `transcribe <file>` | One file, with timestamps and latency. `--json` for machine-readable output |
@@ -49,7 +49,9 @@ The first run downloads the model (~1.5 GB) into `.models/`.
 
 Useful flags: `--model` (compare model sizes), `--vad` (voice-activity chunking on/off),
 `--turns` (print the visual blocks the app would show), `--auto-language`, `--no-prewarm`.
-For `stream`: `--chunk-ms` (160/320/1280), `--eou-debounce-ms`, `--min-turn`, `--max-seconds`.
+For `stream`: `--asr` (engine and lookahead), `--chunk-ms` (160/320/1280), `--eou-debounce-ms`,
+`--min-turn`, `--max-seconds`. `--no-gain` takes the automatic gain stage out of the signal path and
+`--max-gain-db` sets its ceiling; the stage and its measured cost are covered in `ENGINES.md`.
 
 **Any recording works, at any sample rate.** `--from-file` takes 16 kHz, 44.1 kHz, 48 kHz or higher,
 mono or multi-channel, and resamples to the 16 kHz mono the engine wants. That is worth saying out
@@ -391,7 +393,7 @@ question: whether the engine keeps up, and what that costs in accuracy.
 Everything in this section describes the Whisper loop the harness was first built on. The engine the
 app is being built around is different and simpler to look at: **`make stream`**.
 
-It runs Parakeet EOU for the words and streaming Sortformer for the speakers, off the microphone,
+It runs Nemotron 0.6B for the words and streaming Sortformer for the speakers, off the microphone,
 and prints one colour per speaker as the conversation arrives. Nothing about it is scored, because a
 live conversation has no reference — it exists because "72.3% at ≥ 2 s and 83% colour constancy" is
 not the same claim as "pleasant to sit in front of", and only the second one decides whether this
@@ -798,11 +800,18 @@ reading "manager.").
   including "the last turn is attributed to the wrong speaker" (a tail-padding effect, and the tail
   is always the turn on screen). The vendored copy's embedder and clustering types are `internal`,
   so a hand-rolled streaming wrapper on top of them is not available either. **A different engine is
-  the alternative, and it has now been measured — see [ENGINES.md](ENGINES.md).** Two Parakeet models
-  answer the question and they are not the ones that first looked right. The 0.6B TDT model runs this
-  fixture set at a real-time factor of 0.009, but its *streaming* export re-encodes 5.6 seconds of
-  left context per 80 ms chunk and measures a real-time factor of 10.7–31.8, so the accurate model is
-  the one that cannot be used live; the live words come from streaming EOU at 320 ms instead. And the
+  the alternative, and it has now been measured — see [ENGINES.md](ENGINES.md).** The 0.6B TDT model
+  runs this fixture set at a real-time factor of 0.009, but its *streaming* export re-encodes 5.6
+  seconds of left context per 80 ms chunk and measures a real-time factor of 10.7–31.8, so that
+  particular model is the one that cannot be used live. **A different 0.6B model can be, and is now
+  the default: Nemotron 0.6B at 1120 ms of lookahead**, which runs at **7.6× real time at 13% of a
+  real-time budget on an M4** (6.1× on the M2 Pro, and still 3.9× with macOS doing background work
+  alongside it). It beats the 120M EOU model the app used to ship by **25 points of WER and 26
+  points of word recall** across two five-minute windows of real far-field dinner-table audio —
+  62.6% to 37.5%, and 38% of the spoken words to 64%. Most of that is not the model but the input
+  level, which is the other half of the change. The measurement, and the input-level gain stage that
+  goes with it, are in the "recogniser was dropping two thirds of the words" section of
+  [ENGINES.md](ENGINES.md). And the
   diarizer is **streaming Sortformer, not LS-EEND**, which defaults to `ls_eend_ami` and collapses to
   one cluster on far-field audio — 4% and 12% on the AMI meetings, against `dihard3`'s 42% and 44%
   flat. On ten DiPCo dinner-table sessions Sortformer scores **49.5% flat, 72.3% at ≥ 2 s and 82.3%
