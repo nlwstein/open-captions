@@ -51,6 +51,49 @@ public struct AudioFixture: Sendable {
         guard let metadataURL, let data = try? Data(contentsOf: metadataURL) else { return nil }
         return try? JSONDecoder().decode(FixtureMetadata.self, from: data)
     }
+
+    /// Length of the recording in seconds, or 0 when it cannot be determined from the file.
+    ///
+    /// Read from the header rather than by decoding, because the one thing that needs it —
+    /// scoring a transcript some other process produced — has no audio pipeline in hand and does
+    /// not want to decode 47 seconds of audio to divide two numbers. Only WAV is understood:
+    /// every fixture is one, and an unrecognised container returns 0 rather than a guess, which
+    /// shows up as a meaningless real-time factor rather than a plausible wrong one.
+    public var duration: Double {
+        guard let handle = try? FileHandle(forReadingFrom: audioURL) else { return 0 }
+        defer { try? handle.close() }
+        // 12-byte RIFF header, then 8-byte chunk headers, skipping unknown chunks. Bounded so a
+        // malformed file cannot walk the whole disk looking for a `data` chunk.
+        guard let header = try? handle.read(upToCount: 12), header.count == 12,
+              header[0..<4] == Data("RIFF".utf8), header[8..<12] == Data("WAVE".utf8)
+        else { return 0 }
+
+        var byteRate = 0
+        var frames = 0
+        for _ in 0..<64 {
+            guard let chunkHeader = try? handle.read(upToCount: 8), chunkHeader.count == 8 else {
+                return 0
+            }
+            let id = chunkHeader[0..<4]
+            let size = chunkHeader[4..<8].withUnsafeBytes {
+                Int($0.loadUnaligned(as: UInt32.self).littleEndian)
+            }
+            if id == Data("fmt ".utf8) {
+                guard let body = try? handle.read(upToCount: size), body.count >= 12 else { return 0 }
+                byteRate = body[8..<12].withUnsafeBytes {
+                    Int($0.loadUnaligned(as: UInt32.self).littleEndian)
+                }
+            } else if id == Data("data".utf8) {
+                frames = size
+                break
+            } else {
+                // Chunks are word-aligned, so an odd size carries one padding byte.
+                try? handle.seek(toOffset: handle.offsetInFile + UInt64(size + size % 2))
+            }
+        }
+        guard byteRate > 0, frames > 0 else { return 0 }
+        return Double(frames) / Double(byteRate)
+    }
 }
 
 /// Discovers fixtures laid out under a `Fixtures/` directory.

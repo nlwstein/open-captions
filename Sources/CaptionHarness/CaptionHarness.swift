@@ -11,7 +11,7 @@ struct CaptionHarness: AsyncParsableCommand {
         Fixtures live under Fixtures/ as audio/<name>.wav with an optional \
         reference/<name>.txt and metadata/<name>.json.
         """,
-        subcommands: [List.self, Transcribe.self, Evaluate.self, Report.self, Live.self]
+        subcommands: [List.self, Transcribe.self, Evaluate.self, Score.self, Report.self, Live.self]
     )
 }
 
@@ -364,7 +364,7 @@ private struct TranscriptionOutput: Codable {
     let decodingFallbacks: Int
 }
 
-private struct EvaluationPayload: Codable {
+struct EvaluationPayload: Codable {
     let summary: EvaluationSummary
     let evaluations: [TranscriptEvaluation]
 }
