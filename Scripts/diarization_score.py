@@ -22,15 +22,21 @@ almost every turn is long enough to be a fair question; on a real 25-minute meet
 shorter than half a second, which is the diarizer's own step size. A single number over both would
 read as model error when much of it is resolution.
 
+Two accuracy figures are printed. The first lets each predicted cluster take the truth label it
+dominates, so a person the model split across three clusters can be credited in all three; the
+second allows each person only one cluster. The gap between them is fragmentation, and on a
+dinner-table recording it is worth a few points.
+
 Usage:
-  uv run -I Scripts/diarization_score.py <truth-fixture> <diarizer-output.txt> [--turns PATH]
+  uv run --no-project python -I Scripts/diarization_score.py <truth-fixture> <diarizer-output.txt>
 
   The diarizer output is the text form printed by FluidAudio's `lseend` command:
       Speaker 0: 0.10s - 21.80s (21.70s)
 
-  `--turns` points at a `turns.txt` from `ami_annotations.py turns`; defaults to the committed AMI
-  build output. `--clip-start` is only needed for a clip cut from a longer recording, and should be
-  0 for a whole-meeting score. `--table` prints every turn.
+  `--turns` points at a `turns.txt` from `ami_annotations.py turns` (or the DiPCo equivalent,
+  `dipco_annotations.py turns`); defaults to the committed AMI build output. `--clip-start` is only
+  needed for a clip cut from a longer recording, and should be 0 for a whole-meeting score.
+  `--table` prints every turn.
 """
 
 from __future__ import annotations
@@ -130,39 +136,87 @@ def dominant_per_turn(
     return dominant
 
 
-def best_mapping(
-    truth: list[tuple[float, float, str]], prediction: list[tuple[str, float, float]]
-) -> tuple[dict[str, str], int, int]:
-    """The relabelling of predicted speakers that agrees with the truth on the most turns.
-
-    Each predicted speaker is assigned the truth label it dominates most often, chosen
-    independently. Independence is what makes this exactly optimal rather than a heuristic: with a
-    many-to-one mapping, one predicted speaker's label cannot affect another's score, because a turn
-    is only ever counted against the single predicted speaker that dominates it.
-
-    Many-to-one rather than a bijection, because a diarizer that splits one person across two
-    clusters is a real and common failure, and the question here is only whether a turn would get
-    the right colour. Ties on turn count are broken toward the assignment that also covers more
-    overlapping time, so a diarizer with correct boundaries beats one that stumbled onto the counts.
-    """
-    dominant = dominant_per_turn(truth, prediction)
-
-    tally: dict[str, dict[str, list[float]]] = {}
+def tally(
+    dominant: list[tuple[str | None, float]], truth: list[tuple[float, float, str]]
+) -> dict[str, dict[str, tuple[int, float]]]:
+    """tally[cluster][label] = (turns where that cluster dominates, total time it covered)."""
+    counts: dict[str, dict[str, list[float]]] = {}
     for (speaker, weight), (_, _, label) in zip(dominant, truth):
         if speaker is None:
             continue
-        entry = tally.setdefault(speaker, {}).setdefault(label, [0, 0.0])
+        entry = counts.setdefault(speaker, {}).setdefault(label, [0, 0.0])
         entry[0] += 1
         entry[1] += weight
+    return {c: {l: (int(v[0]), v[1]) for l, v in labels.items()} for c, labels in counts.items()}
 
-    mapping = {
-        speaker: max(counts.items(), key=lambda kv: (kv[1][0], kv[1][1]))[0]
-        for speaker, counts in tally.items()
-    }
+
+def best_mapping(
+    truth: list[tuple[float, float, str]],
+    prediction: list[tuple[str, float, float]],
+    strict: bool = False,
+) -> tuple[dict[str, str], int, int]:
+    """The relabelling of predicted speakers that agrees with the truth on the most turns.
+
+    Two modes, because they answer two different questions and the gap between them is a result in
+    its own right.
+
+    The default is many-to-one: each cluster is labelled independently with the truth speaker it
+    dominates most often. That is the most generous reading, and it is what "was this turn
+    attributed to the right person" means if you allow a person to have been split across several
+    clusters — which diarizers routinely do.
+
+    `strict` allows each truth speaker at most one cluster, so a person split three ways can be
+    credited in only one of them. This is the honest one for this app: a colour is the deliverable,
+    and a speaker the model fragmented into three clusters shows up as three colours. It is solved
+    exactly by a subset DP over the speakers rather than by search, since the state is just which
+    speakers have been used.
+
+    Ties on turn count break toward the assignment covering more overlapping time, so a diarizer
+    with correct boundaries beats one that stumbled onto the right counts.
+    """
+    dominant = dominant_per_turn(truth, prediction)
+    counts = tally(dominant, truth)
+    speakers = sorted({label for _, _, label in truth})
+
+    if not strict:
+        mapping = {
+            cluster: max(labels.items(), key=lambda kv: kv[1])[0]
+            for cluster, labels in counts.items()
+        }
+    else:
+        # dp[mask] = best (turns, covered) having assigned the clusters processed so far to exactly
+        # the speakers in `mask`. Each cluster is either left unassigned or given a free speaker.
+        clusters = sorted(counts)
+        dp: dict[int, tuple[int, float, dict[str, str]]] = {0: (0, 0.0, {})}
+        for cluster in clusters:
+            nxt = dict(dp)
+            for mask, (turns_hit, covered, assigned) in dp.items():
+                for index, speaker in enumerate(speakers):
+                    if mask >> index & 1:
+                        continue
+                    gain = counts[cluster].get(speaker, (0, 0.0))
+                    candidate = (
+                        turns_hit + gain[0],
+                        covered + gain[1],
+                        {**assigned, cluster: speaker},
+                    )
+                    new_mask = mask | (1 << index)
+                    if new_mask not in nxt or candidate[:2] > nxt[new_mask][:2]:
+                        nxt[new_mask] = candidate
+            dp = nxt
+        best = max(dp.values(), key=lambda v: v[:2])
+        # A cluster that earns no hits is only filling a slot the DP had spare. Printing it would
+        # read as a claim about a speaker it never matched, so it is dropped rather than relabelled.
+        mapping = {
+            cluster: speaker
+            for cluster, speaker in best[2].items()
+            if counts[cluster].get(speaker, (0, 0.0))[0] > 0
+        }
+
     hits = sum(
         1
-        for (speaker, _), (_, _, label) in zip(dominant, truth)
-        if speaker is not None and mapping[speaker] == label
+        for (cluster, _), (_, _, label) in zip(dominant, truth)
+        if cluster is not None and mapping.get(cluster) == label
     )
     return mapping, hits, len(truth)
 
@@ -196,11 +250,33 @@ def main() -> int:
     truth = load_truth(args.fixture, args.turns, offset)
     prediction = load_prediction(args.prediction)
     mapping, hits, total = best_mapping(truth, prediction)
+    strict_mapping, strict_hits, _ = best_mapping(truth, prediction, strict=True)
 
     print(f"{args.fixture}: {hits}/{total} turns correctly attributed — {100 * hits / total:.0f}%")
     print(f"  diarizer found {len({s for s, _, _ in prediction})} speakers, "
           f"truth has {len({t for _, _, t in truth})}")
     print(f"  best mapping: " + ", ".join(f"{k}→{v}" for k, v in sorted(mapping.items())))
+
+    # Fragmentation is the gap between the two mappings, and it is not a footnote: the app shows one
+    # colour per cluster, so a speaker the model split across three of them really does appear in
+    # three colours. The generous figure is what "was the right person attributed" means; this is
+    # what "would the reader see a consistent colour" means.
+    shared = {
+        label: sorted(cluster for cluster, mapped in mapping.items() if mapped == label)
+        for label in {v for v in mapping.values()}
+    }
+    split = {label: clusters for label, clusters in shared.items() if len(clusters) > 1}
+    print(
+        f"  one colour per speaker: {strict_hits}/{total} — "
+        f"{100 * strict_hits / total:.0f}%"
+        + (f" (mapping: {', '.join(f'{k}→{v}' for k, v in sorted(strict_mapping.items()))})"
+           if split else "")
+    )
+    if split:
+        print("  fragmented: " + "; ".join(
+            f"{label} across {len(clusters)} clusters ({', '.join(clusters)})"
+            for label, clusters in sorted(split.items())
+        ))
 
     # Per-turn outcome, computed once and used for both the breakdown and the table.
     rows = []
