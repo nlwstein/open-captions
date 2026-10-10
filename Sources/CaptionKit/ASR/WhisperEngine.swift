@@ -255,7 +255,13 @@ public actor WhisperEngine {
                         end: $0.end,
                         probability: $0.probability
                     )
-                }
+                },
+                quality: DecodeQuality(
+                    noSpeechProbability: segment.noSpeechProb,
+                    averageLogProbability: segment.avgLogprob,
+                    compressionRatio: segment.compressionRatio,
+                    temperature: segment.temperature
+                )
             )
         }
         return Transcript(

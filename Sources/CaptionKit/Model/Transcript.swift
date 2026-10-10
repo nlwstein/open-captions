@@ -18,18 +18,65 @@ public struct CaptionWord: Codable, Equatable, Sendable {
     public var duration: Float { end - start }
 }
 
+/// What the decoder thought of the window it produced a segment from.
+///
+/// WhisperKit computes these once per 30-second window, so every segment decoded from the same window
+/// carries the same values. They are kept because the live loop has to decide whether text is worth
+/// showing, and the decoder's own opinion is the cheapest evidence available — see
+/// ``SpeechGate``. The alternative was a list of known hallucinated strings, which is a losing game.
+///
+/// Optional throughout: not every engine reports them, and a report written before they existed must
+/// still decode.
+public struct DecodeQuality: Codable, Equatable, Sendable {
+    /// The decoder's probability that this window holds no speech at all. WhisperKit's own threshold
+    /// for acting on it is 0.6.
+    public let noSpeechProbability: Float
+
+    /// Mean log-probability of the tokens produced. High means confident — *including* when the
+    /// decoder is confidently wrong, which is the case that defeats WhisperKit's own silence check.
+    public let averageLogProbability: Float
+
+    /// Repeated text inflates this ratio. It is the standard tell for a decoder looping on itself.
+    public let compressionRatio: Float
+
+    /// The fallback temperature this attempt ran at. Non-zero means earlier attempts failed their
+    /// quality checks and this one is a sampled retry rather than a greedy decode.
+    public let temperature: Float
+
+    public init(
+        noSpeechProbability: Float,
+        averageLogProbability: Float,
+        compressionRatio: Float,
+        temperature: Float
+    ) {
+        self.noSpeechProbability = noSpeechProbability
+        self.averageLogProbability = averageLogProbability
+        self.compressionRatio = compressionRatio
+        self.temperature = temperature
+    }
+}
+
 /// A transcribed span of speech, as emitted by the recognizer.
 public struct CaptionSegment: Codable, Equatable, Sendable {
     public let text: String
     public let start: Float
     public let end: Float
     public let words: [CaptionWord]
+    /// The decoder's judgement about the window this came from, when the engine reports one.
+    public let quality: DecodeQuality?
 
-    public init(text: String, start: Float, end: Float, words: [CaptionWord] = []) {
+    public init(
+        text: String,
+        start: Float,
+        end: Float,
+        words: [CaptionWord] = [],
+        quality: DecodeQuality? = nil
+    ) {
         self.text = text
         self.start = start
         self.end = end
         self.words = words
+        self.quality = quality
     }
 
     public var duration: Float { end - start }

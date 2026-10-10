@@ -49,6 +49,13 @@ struct Live: AsyncParsableCommand {
     @Flag(name: .long, help: "Log every decode to stderr: what it saw and what it committed.")
     var verbose: Bool = false
 
+    /// The gate is the reason a decode gets discarded, so measuring what it costs needs a run with
+    /// it switched off — same flags, same fixture, same machine. Without that, a fixture that loses
+    /// its tail has two candidate explanations (the gate, or a decoder that never produced the text
+    /// at all) and no way to choose between them.
+    @Flag(name: .long, help: "Let every decode through, including bracketed non-speech.")
+    var noSpeechGate: Bool = false
+
     /// The live loop cannot use the model the offline report measures, and the difference is not a
     /// tuning preference — it is the difference between keeping up and not.
     ///
@@ -79,16 +86,15 @@ struct Live: AsyncParsableCommand {
         let interrupt = installInterruptHandler(state)
 
         let liveModel = modelOptions.resolvedModel(default: Self.liveModel)
-        FileHandle.standardError.write(Data("Loading \(liveModel)…\n".utf8))
         if modelOptions.model == nil {
             let note = "Live runs on \(Self.liveModel): large-v3-turbo is ~9x slower and falls "
                 + "behind. Pass --model to override.\n"
             FileHandle.standardError.write(Data(note.utf8))
         }
-        if !noWarmUp {
-            try? await warmUp(engine)
-        }
 
+        // The source is built and started before the model is loaded, so the microphone is live from
+        // the moment the user is ready rather than a second or two later. `LiveTranscriber.run` does
+        // the ordering; all that is needed here is to hand it the warm-up as a closure.
         let source = try makeSource()
         let display = LiveDisplay(
             knownNames: knownNames,
@@ -103,13 +109,26 @@ struct Live: AsyncParsableCommand {
         }
         var configuration = LiveConfiguration()
         configuration.silenceGap = silence
+        if noSpeechGate {
+            configuration.speechGate = .open
+            FileHandle.standardError.write(Data("Speech gate off — non-speech decodes will be shown.\n".utf8))
+        }
 
         let transcriber = LiveTranscriber(engine: engine, configuration: configuration)
         var diagnosticSink: (@Sendable (LiveDecodeDiagnostic) -> Void)?
         if verbose { diagnosticSink = Live.logDecodeSink }
 
+        var warmUpAction: (@Sendable () async -> Void)?
+        if !noWarmUp {
+            warmUpAction = {
+                FileHandle.standardError.write(Data("Loading \(liveModel)…\n".utf8))
+                await Self.warmUp(engine, fromFile: fromFile)
+            }
+        }
+
         let session = try await transcriber.run(
             source: source,
+            warmUp: warmUpAction,
             shouldContinue: { state.isRunning },
             onUpdate: { display.update($0) },
             onDecode: diagnosticSink
@@ -150,11 +169,13 @@ struct Live: AsyncParsableCommand {
         // diverge only when the meter heard speech the transcript never showed.
         let coverage = String(
             format: "  %.1fs of audio after the last word, %.1fs of it heard as speech%@\n"
-                + "  %d slice(s) rescued by re-decoding from an earlier start\n\n",
+                + "  %d slice(s) rescued by re-decoding from an earlier start\n"
+                + "  %d decode(s) dropped as non-speech\n\n",
             session.trailingAudio,
             session.uncoveredSpeech,
             session.uncoveredSpeech > 1.0 ? "  — speech went unshown" : "",
-            session.recoveries
+            session.recoveries,
+            session.gatedDecodes
         )
         FileHandle.standardError.write(Data(coverage.utf8))
 
@@ -167,9 +188,9 @@ struct Live: AsyncParsableCommand {
     static let logDecodeSink: @Sendable (LiveDecodeDiagnostic) -> Void = { logDecode($0) }
 
     static func logDecode(_ diagnostic: LiveDecodeDiagnostic) {
-        let line = String(
+        var line = String(
             format: "decode%@ [%6.1fs +%5.1fs] %3d words (%3d decoded), last ends %6.1fs "
-                + "→ %d turn(s), %d closed, committed to %6.1fs in %.2fs%@\n",
+                + "→ %d turn(s), %d closed, committed to %6.1fs in %.2fs%@",
             diagnostic.forced ? "*" : " ",
             diagnostic.sliceStart,
             diagnostic.sliceSeconds,
@@ -180,9 +201,29 @@ struct Live: AsyncParsableCommand {
             diagnostic.closed,
             diagnostic.committedTo,
             diagnostic.seconds,
-            diagnostic.recovered ? "  RECOVERED" : ""
+            (diagnostic.recovered ? "  RECOVERED" : "")
+                + (diagnostic.gate.map { "  DROPPED \($0.rawValue)" } ?? "")
         )
-        FileHandle.standardError.write(Data(line.utf8))
+        // The decoder's own opinion of the window, spelled out rather than abbreviated: `ns` is the
+        // probability it holds no speech, `lp` the mean log-probability of what it produced (high is
+        // confident, and confidently wrong is the failure that matters), `cr` the compression ratio
+        // that catches a decoder looping on itself, and `t` the fallback temperature.
+        if let quality = diagnostic.quality {
+            line += String(
+                format: "  ns %.2f lp %+.2f cr %.2f t %.1f",
+                quality.noSpeechProbability,
+                quality.averageLogProbability,
+                quality.compressionRatio,
+                quality.temperature
+            )
+        }
+        // Quoted, so a dropped line can be judged rather than counted. A gate that eats real speech
+        // is worse than the hallucination it was built to stop, and a word count cannot tell them
+        // apart.
+        if let dropped = diagnostic.droppedText {
+            line += "  »\(dropped)«"
+        }
+        FileHandle.standardError.write(Data((line + "\n").utf8))
     }
 
     private func makeSource() throws -> LiveAudioSource {
@@ -199,18 +240,23 @@ struct Live: AsyncParsableCommand {
     /// available; the microphone path has no audio to borrow, and a synthesised buffer is worse than
     /// nothing here (silence skips the decode path entirely, and noise makes the decoder hallucinate
     /// a full window of tokens).
-    private func warmUp(_ engine: WhisperEngine) async throws {
+    /// Static, so the closure that hands it to the loop captures the engine and a path rather than
+    /// the command itself.
+    ///
+    /// Failures are swallowed on purpose: this is an optimisation, and a warm-up that cannot find
+    /// audio should cost the first turn its speed, not the session its run.
+    private static func warmUp(_ engine: WhisperEngine, fromFile: String?) async {
         if let fromFile {
             let url = URL(fileURLWithPath: (fromFile as NSString).expandingTildeInPath)
-            try await engine.warmUp(audioPath: url.path)
+            _ = try? await engine.warmUp(audioPath: url.path)
             return
         }
         if let root = FixtureLibrary.locate(explicit: nil),
            let fixture = try? FixtureLibrary(root: root).fixture(named: "quiet-single-speaker") {
-            try await engine.warmUp(audioPath: fixture.audioURL.path)
+            _ = try? await engine.warmUp(audioPath: fixture.audioURL.path)
             return
         }
-        try await engine.load()
+        try? await engine.load()
     }
 }
 

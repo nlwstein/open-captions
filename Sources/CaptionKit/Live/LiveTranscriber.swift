@@ -79,6 +79,9 @@ public struct LiveSession: Sendable {
     /// before the re-decode guard existed and 0 s after. Compare it with ``trailingAudio`` — when
     /// the two agree, the uncovered tail was silence.
     public var uncoveredSpeech: Double = 0
+    /// Decodes whose text ``SpeechGate`` rejected. Each one is a turn that would otherwise have been
+    /// shown to the user.
+    public var gatedDecodes: Int = 0
 
     public var realTimeFactor: Double {
         audioSeconds > 0 ? decodeSeconds / audioSeconds : 0
@@ -105,6 +108,16 @@ public struct LiveDecodeDiagnostic: Sendable {
     public var forced: Bool = false
     /// True when the first attempt returned nothing and an earlier start brought the words back.
     public var recovered: Bool = false
+    /// The decoder's own judgement about the window. Present whenever the decode produced a segment,
+    /// including one that produced no words.
+    public var quality: DecodeQuality?
+    /// Set when ``SpeechGate`` rejected this decode's text, and why. Nil means the text was admitted,
+    /// or that there was no text to judge.
+    public var gate: SpeechGateVerdict?
+    /// The text the gate rejected. Kept because a gate that silently eats real speech is worse than
+    /// the hallucination it was built to stop, and there is no way to tell the two apart after the
+    /// fact from a word count alone.
+    public var droppedText: String?
 
     public init() {}
 }
@@ -137,6 +150,10 @@ public struct LiveConfiguration: Sendable {
     /// it. Two seconds is chosen from measurement rather than taste — see ``LiveTranscriber/decode``.
     public var retryBackoffSeconds: TimeInterval = 2.0
 
+    /// Rejects text the decoder does not stand behind, so a window of room tone cannot be committed
+    /// as a turn. See ``SpeechGate`` for the measurement the thresholds come from.
+    public var speechGate = SpeechGate()
+
     public init() {}
 }
 
@@ -161,9 +178,15 @@ public final class LiveTranscriber {
     /// Runs until the source stops or `shouldContinue` returns false.
     ///
     /// Returns every turn the session committed, in order.
+    /// - Parameter warmUp: Run after capture has started, before the first chunk is consumed.
+    ///   Anything expensive the recognizer needs done once — loading the model, CoreML specializing
+    ///   its graphs — belongs here rather than before ``run`` is called. Starting capture first is
+    ///   what makes the difference: the stream buffers whatever arrives while this runs, so the
+    ///   opening seconds of a session are delayed rather than lost. See Finding 13.
     @discardableResult
     public func run(
         source: LiveAudioSource,
+        warmUp: (@Sendable () async -> Void)? = nil,
         shouldContinue: @escaping @Sendable () -> Bool,
         onUpdate: @escaping @Sendable (LiveUpdate) -> Void,
         onDecode: (@Sendable (LiveDecodeDiagnostic) -> Void)? = nil
@@ -186,6 +209,7 @@ public final class LiveTranscriber {
         var lastDecodeDuration: Double = 0
         var speechSinceDecode = false
         var recoveries = 0
+        var gatedDecodes = 0
         var lastSpeechAt: Double = 0
         let startedAt = DispatchTime.now()
 
@@ -266,6 +290,28 @@ public final class LiveTranscriber {
                 if recovered, !pending.words.isEmpty { recoveries += 1 }
             }
 
+            // Only now ask whether the text is worth showing, and the order matters: an empty tail is
+            // the recovery guard's business, and the gate judges empty text an artefact — run first,
+            // it would suppress the very retry that exists to bring real words back.
+            //
+            // A rejected window is dropped rather than retried. The decoder has told us it heard
+            // nothing; re-decoding would ask the same question of the same audio and get the same
+            // answer, which is what the retry moves the start to avoid.
+            var gateVerdict: SpeechGateVerdict?
+            var droppedText: String?
+            if !pending.words.isEmpty {
+                let verdict = configuration.speechGate.verdict(
+                    text: pending.text,
+                    quality: result.output.transcript.segments.first?.quality
+                )
+                if verdict != .speech {
+                    gateVerdict = verdict
+                    droppedText = pending.text
+                    gatedDecodes += 1
+                    pending = Transcript(text: "", segments: [])
+                }
+            }
+
             let sliceStart = result.start
             let output = result.output
             let lastDecodeDuration = result.seconds
@@ -327,6 +373,11 @@ public final class LiveTranscriber {
             diagnostic.seconds = lastDecodeDuration
             diagnostic.forced = force
             diagnostic.recovered = recovered
+            // Read from the raw output rather than the trimmed tail: an empty tail still carries the
+            // window's judgement, and that is the case the diagnostic most needs to explain.
+            diagnostic.quality = output.transcript.segments.first?.quality
+            diagnostic.gate = gateVerdict
+            diagnostic.droppedText = droppedText
             onDecode?(diagnostic)
 
             lastDecodeAt = elapsed
@@ -336,7 +387,16 @@ public final class LiveTranscriber {
         // Pacing and capture happen in the source's own task; this loop consumes chunks as they
         // arrive. Buffering is unbounded, so a decode that runs long delays the *display* rather
         // than losing audio — falling behind should show up as lag, not as missing words.
+        //
+        // Which is also why the warm-up belongs here and not before the call. Capture is live from
+        // this line; everything the recognizer needs to do before it can decode happens with the
+        // stream filling up behind it, so the cost is paid in latency instead of in lost words.
+        // Measured before this ordering: the microphone was not capturing until 0.65–2.1 s after
+        // playback began, and the sentence spoken in that window was never recorded.
         let stream = try await source.stream()
+        if let warmUp {
+            await warmUp()
+        }
 
         for try await chunk in stream {
             audio.append(contentsOf: chunk)
@@ -387,7 +447,8 @@ public final class LiveTranscriber {
             fallbacks: fallbacks,
             recoveries: recoveries,
             trailingAudio: max(0, elapsed - committedTo),
-            uncoveredSpeech: max(0, lastSpeechAt - committedTo)
+            uncoveredSpeech: max(0, lastSpeechAt - committedTo),
+            gatedDecodes: gatedDecodes
         )
     }
 
@@ -413,7 +474,10 @@ public final class LiveTranscriber {
                 text: words.map(\.text).joined(separator: " "),
                 start: first.start,
                 end: last.end,
-                words: words
+                words: words,
+                // The window's judgement, not the tail's: it describes the audio the decoder was
+                // shown, which is what any decision about showing the text has to be based on.
+                quality: transcript.segments.first?.quality
             )]
         )
     }
