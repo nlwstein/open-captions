@@ -20,7 +20,7 @@ REAL  := ami-meeting ami-meeting-far
 
 SOURCES := $(shell find Sources -name '*.swift' 2>/dev/null) Package.swift
 
-.PHONY: all build test test-clean test-hard test-real unit live live-file fixtures clean
+.PHONY: all build test test-clean test-hard test-real unit live live-file stream stream-file fixtures clean
 
 all: test
 
@@ -66,6 +66,22 @@ live: $(HARNESS)
 ## Usage: make live-file FIXTURE=family-dinner
 live-file: $(HARNESS)
 	$(HARNESS) live --from-file Fixtures/audio/$(FIXTURE).wav --model-cache $(MODEL_CACHE) --verbose
+
+# ---------------------------------------------------------------------------------------------
+# The app's engine, live
+# ---------------------------------------------------------------------------------------------
+
+## The engine the app will ship, running live with one colour per speaker. This is the one to sit
+## in front of: `live` above is the older Whisper loop and has no diarization at all, so it cannot
+## show what speakers feel like. Ctrl-C to stop.
+stream: $(HARNESS)
+	$(HARNESS) stream
+
+## The same pipeline off a recording instead of the microphone — how it is tested without asking
+## anyone to talk into a laptop. `make stream-file FIXTURE=family-dinner SPEED=4` to hurry it.
+## SPEED is a wall-clock multiplier, so leave it at 1 to judge the latency honestly.
+stream-file: $(HARNESS)
+	$(HARNESS) stream --from-file Fixtures/audio/$(FIXTURE).wav --speed $(or $(SPEED),1)
 
 # ---------------------------------------------------------------------------------------------
 # Building and fixtures
