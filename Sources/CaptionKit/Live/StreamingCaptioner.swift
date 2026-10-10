@@ -226,6 +226,38 @@ public final class StreamingCaptioner: @unchecked Sendable {
         progress?("ready")
     }
 
+    /// A speaker the diarizer has been introduced to, and the slot it settled in.
+    public struct Enrolled: Sendable {
+        public var name: String
+        /// The diarizer slot this voice was placed in, or nil if it found no speech in the clip.
+        public var slot: Int?
+    }
+
+    /// Introduces the diarizer to a voice before the session starts.
+    ///
+    /// This is not a label. Feeding a person's audio through the model primes its speaker cache and
+    /// FIFO with that voice, which is the only mechanism available against the failure the whole
+    /// engine is otherwise exposed to: the slot-to-person mapping held for a whole recording in
+    /// about four sessions of five on DiPCo, and a colour that moves to a different person
+    /// mid-conversation is the one thing a reader cannot detect. A name given *during* a session is
+    /// a claim about a slot and nothing more — `DiarizerSpeaker` carries no embedding, so nothing
+    /// checks it later.
+    ///
+    /// **Must be called before `run`.** Each clip is processed as a complete utterance, which
+    /// advances the model's streaming state and resets its timeline; doing that mid-session would
+    /// throw away the conversation so far. The upstream API logs a warning and resets the timeline
+    /// if it sees segments, which is the honest signal that this is a start-of-session operation.
+    ///
+    /// Roughly fifteen to thirty seconds of one person talking, without them being talked over, is
+    /// the useful amount. Longer clips are mostly the other people in the room.
+    @discardableResult
+    public func enroll(_ clips: [(name: String, audio: [Float])]) throws -> [Enrolled] {
+        try clips.map { clip in
+            let speaker = try diarizer.enrollSpeaker(withAudio: clip.audio, named: clip.name)
+            return Enrolled(name: clip.name, slot: speaker?.index)
+        }
+    }
+
     /// Runs until the source stops. `onUpdate` is called after every audio chunk with the whole
     /// conversation so far, so a renderer can rewrite the open turn rather than only append.
     public func run(

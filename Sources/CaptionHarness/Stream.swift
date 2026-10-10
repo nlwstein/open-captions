@@ -80,6 +80,19 @@ struct Stream: AsyncParsableCommand {
     )
     var dump: String?
 
+    @Option(
+        name: .long,
+        parsing: .upToNextOption,
+        help: """
+        Introduce the diarizer to a voice before the session starts, as `name=path.wav`. Repeatable. \
+        This is not a label: the clip is fed through the model, which primes its speaker cache with \
+        that voice — the only mechanism available against slot drift, where a colour moves to a \
+        different person mid-conversation and the reader has no way to tell. Give each person \
+        fifteen to thirty seconds of their own speech, uninterrupted.
+        """
+    )
+    var enroll: [String] = []
+
     @Flag(name: .long, help: "Print turns as they close, no redrawing — for piping to a file.")
     var plain: Bool = false
 
@@ -148,6 +161,22 @@ struct Stream: AsyncParsableCommand {
         if !plain { renderer.enter() }
         renderer.note("loading models… this is slow the first time")
         try await captioner.prepare { message in renderer.note(message) }
+
+        if !enroll.isEmpty {
+            renderer.note("enrolling \(enroll.count) speaker(s)…")
+            let clips = try enrollmentClips()
+            var landed: [Int: String] = [:]
+            for enrolled in try captioner.enroll(clips.map { (name: $0.name, audio: $0.audio) }) {
+                let where_ = enrolled.slot.map { "slot \($0 + 1)" } ?? "no speech found"
+                renderer.note("  \(enrolled.name) → \(where_)")
+                if let slot = enrolled.slot { landed[slot] = enrolled.name }
+            }
+            renderer.adopt(namesBySlot: landed)
+            // Left on screen rather than cleared: which slot each name landed in is the first
+            // thing to check when the colours look wrong, and it is decided before anything is
+            // said into the microphone.
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+        }
         renderer.clearNote()
 
         let session = Session(recorder: recorder, renderer: renderer)
@@ -185,6 +214,30 @@ struct Stream: AsyncParsableCommand {
             renderer.note("wrote \(url.path)")
         }
         if !plain { renderer.finish(turns: session.turns) }
+    }
+
+    /// Reads the `--enroll name=path` clips.
+    ///
+    /// Read here rather than in the captioner so the captioner never touches the filesystem: it
+    /// takes samples, and where those samples came from is the harness's problem — the same split
+    /// as `--from-file`, and it is what keeps the engine runnable on iOS where there are no paths.
+    private func enrollmentClips() throws -> [(name: String, audio: [Float])] {
+        try enroll.map { argument in
+            guard let separator = argument.firstIndex(of: "=") else {
+                throw ValidationError("--enroll wants name=path, got '\(argument)'")
+            }
+            let name = String(argument[argument.startIndex..<separator])
+            let path = String(argument[argument.index(after: separator)...])
+            guard !name.isEmpty else {
+                throw ValidationError("--enroll has an empty name in '\(argument)'")
+            }
+            let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+            do {
+                return (name, try AudioFile.load(url))
+            } catch {
+                throw ValidationError("could not read the enrollment clip at \(url.path)")
+            }
+        }
     }
 
     /// The settings, as one line for the title. A smoke test that produces a surprising result is
@@ -538,6 +591,21 @@ private final class StreamRenderer: @unchecked Sendable {
     func clearNote() {
         lock.lock()
         note = nil
+        lock.unlock()
+    }
+
+    /// Seeds the slot labels from `--enroll`, so an enrolled run is labelled from its first word
+    /// rather than looking identical to an unenrolled one until someone types a name.
+    ///
+    /// These are the diarizer's own opinion of where each voice landed, which is exactly the thing
+    /// being tested — the note that prints the same mapping at enrolment time scrolls away, and a
+    /// run whose labels never appear cannot be compared against one whose labels did. Typing a name
+    /// still overrides: the keyboard is the human's veto on the diarizer's guess.
+    func adopt(namesBySlot: [Int: String]) {
+        lock.lock()
+        for (slot, name) in namesBySlot where names[slot] == nil {
+            names[slot] = name
+        }
         lock.unlock()
     }
 

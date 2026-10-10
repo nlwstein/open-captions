@@ -144,12 +144,21 @@ def load_prediction(path: pathlib.Path) -> list[tuple[str, float, float]]:
     text = path.read_text()
     if text.lstrip().startswith("{"):
         payload = json.loads(text)
-        segments = [
-            (f"s{segment['speakerIndex']}", float(segment["startTimeSeconds"]), float(segment["endTimeSeconds"]))
-            for segment in payload["segments"]
-        ]
+        # Two JSON shapes: `sortformer --output` writes `speakerIndex`/`startTimeSeconds`, and the
+        # harness's `stream --dump` writes `speaker`/`start`/`end`. Accepting both here is what lets
+        # the *streaming* engine be scored against the same reference as the offline one, which is
+        # the only way to compare them — and the streaming dump is the only artifact that carries
+        # the timeline the live colours were actually drawn from.
+        segments = []
+        for segment in payload["segments"]:
+            speaker = segment.get("speakerIndex", segment.get("speaker"))
+            start = segment.get("startTimeSeconds", segment.get("start"))
+            end = segment.get("endTimeSeconds", segment.get("end"))
+            if speaker is None or start is None or end is None:
+                raise SystemExit(f"{path} has a segment with no speaker or times: {segment}")
+            segments.append((f"s{speaker}", float(start), float(end)))
         if not segments:
-            raise SystemExit(f"{path} parsed as sortformer JSON but holds no segments")
+            raise SystemExit(f"{path} parsed as JSON but holds no segments")
         return segments
 
     segments = []

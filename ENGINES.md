@@ -213,8 +213,101 @@ better diarizer, not a better microphone, was worth twenty-four points at ≥ 2 
 **The honest caveat is colour drift, not accuracy.** Constancy is 83% across windows on average, but
 that average hides S08 at 33% and S04 at 67% — roughly one session in five moves a colour mid-way
 through a conversation, and that is the failure a reader cannot detect. Accuracy is good enough to
-ship on this evidence; identity stability is the thing still worth engineering, which is what
-enrolment is for.
+ship on this evidence; identity stability is the thing still worth engineering.
+
+### Enrolment does not do it, and costs fifteen points to find that out
+
+**`SortformerDiarizer.enrollSpeaker` is a naming API, not a speaker-recognition one, and calling it
+makes the diarization measurably worse.** This was going to be the answer to colour drift — introduce
+the diarizer to Mum's voice before the session so her colour is hers and not whichever slot she
+happened to land in. It is not, and the reason is visible in the implementation.
+
+`enrollSpeaker` feeds the clip through the model, accumulates `speechFrames` per slot, takes
+`bestSlot` — whichever of the four tracks dominated *that clip* — and calls
+`_timeline.upsertSpeaker(named:atIndex:)`. `DiarizerSpeaker` holds an `id`, an `index`, a `name` and
+its segments. **There is no embedding anywhere in it.** So the name is attached to a slot index, and
+the slot index is decided afresh from the enrolment clip every time it is called. Enrol the same
+person on two different days and they land wherever the tracks fall, which is the drift it was meant
+to fix.
+
+It is also not free. On S02 (`U01.CH1`, the same input as the 71% above), enrolling all four
+participants from ~22 s of their own close-talk audio each:
+
+| S02, full session | flat | one colour per speaker | windows constant |
+|---|---|---|---|
+| no enrolment | **69%** | 69% | 9/10 |
+| four enrolled speakers | 54% | 54% | 9/10 |
+
+**Fifteen points of accuracy, no constancy gained.** The mapping is not merely relabelled either —
+enrolment moved slots 1 and 3 onto each other *and* changed the segment boundaries, so the model's
+actual output differs rather than the same tracks wearing new numbers. The mechanism is the
+side-effects: each `enrollSpeaker` call resets the timeline twice and pre-creates speaker objects at
+the chosen indices, and the streaming state the session then starts from is not the state it would
+have started from alone.
+
+Two things this measurement needed to be believable, both of which were checked:
+
+- **The engine is bit-for-bit deterministic.** Two identical S02 runs produced identical segments and
+  identical turns, so a difference between two runs is a difference the code caused. Every A/B in
+  this document rests on that, and it is worth re-checking after any FluidAudio bump.
+- **The comparison is same-input.** Both runs read the corpus's own 16 kHz `S02_U01.CH1.wav`, which
+  takes the loader's untouched path — see the loader section below, and note that the 69% baseline
+  above is measured through the *old* loader and would need re-running if the fast path ever
+  changes.
+
+**What this means for the app.** Names still work — but they are the *human's* labels typed onto
+slots, which is what the harness's keyboard already does, and they inherit the drift rather than
+fixing it. Any real fix has to store a voice's embedding and match against it, which is what the
+*offline* diarizer's WeSpeaker embeddings are for; the streaming path has no such thing. Until then
+the honest design is the one already in the harness: numbers by default, names as a human overlay,
+and the slot number kept beside every name so a drift reads as a mismatch rather than as the app
+telling someone their daughter is their son.
+
+### The file loader was the bug: a 35% that nothing but the resampler explained
+
+**A streaming run that scored 35% where this document claims 71% was reading correct audio through a
+broken sample-rate converter.** Finding that took three wrong answers, each of which looked right
+until it was measured, so the wrong turns are recorded here rather than only the conclusion.
+
+The trigger was the sample recordings in `~/Downloads/live-caption-samples/` — three 192 kHz copies of
+S02, twelve times the corpus rate and 691 MB each. Replaying one through the harness scored 35% where
+the same session scored 69% from the corpus's own 16 kHz file. Guesses, in order:
+
+- **Playback speed.** `--speed 25` feeds audio faster than the model consumes it. **Ruled out:** the
+  diarizer's `audioBuffer` is an unbounded array that is appended to and consumed from the front, so
+  a slow consumer makes the buffer grow and never drops samples.
+- **The seven-channel mix.** A plain sum of seven far-field capsules looks like it should comb-filter
+  the speech. **Ruled out:** with the loader fixed it scores **72%**, *better* than a single capsule's
+  70% on the same window. Averaging a real array is a noisy but honest sum, not a broken one.
+- **The sample rate itself.** **Ruled out:** a 16 kHz file re-encoded to float32 and back scores
+  identically, and 48 kHz copies of the full session score the same 69% as native.
+
+What was actually wrong is in the loader this project was calling. WhisperKit's
+`AudioProcessor.loadAudioAsFloatArray` builds an `AVAudioConverter` per read and calls
+`convert(to:error:withInputFrom:)` **exactly once**, which leaves the converter's filter unprimed and
+its latency uncompensated. At 16 kHz nothing is resampled and the path is exact — which is why every
+number in this document measured before this was found still stands. At 192 kHz the conversion is
+12:1 and the loss is real:
+
+| S02, full session | flat | windows constant |
+|---|---|---|
+| corpus `U01.CH1` at its native 16 kHz | **69%** | 9/10 |
+| the same audio as a 192 kHz copy, library loader | 55% | **4/10** |
+| the same audio at 192 kHz, our loader | **66%** | **10/10** |
+
+**Eleven points and six windows of colour stability, from a converter configuration.** The fix is in
+`AudioFile.load`: files that need resampling are converted here instead, with one converter held
+across the whole file and the input block written as a *source the converter pulls from*, which is the
+shape the API documents. `sampleRateConverterQuality` is also set explicitly rather than left at the
+default. Files already at 16 kHz still take the library's path untouched, so the common case carries
+no new code and no new risk.
+
+Two things worth keeping from this, beyond the fix. **The engine is deterministic** — two identical
+runs produce byte-identical segments and turns — so a difference between two runs is a difference the
+code caused, which is what made an eleven-point claim safe to make at all. And **a near-perfect
+waveform correlation is not evidence that a pipeline is unchanged**: the loaded 192 kHz audio
+correlated with the original at **r = 0.9994** at zero shift while scoring fourteen points worse. The
+residual was 0.06% of the signal and enough to move a thresholded model.
 
 Everything below this correction is LS-EEND, kept because the close-talk/array control and the
 overlap cross-tab are the measurements that explain *why* the two models differ, and because the
