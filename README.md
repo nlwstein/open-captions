@@ -415,6 +415,168 @@ bag. I never forget them now." and "I know. I'll take it when we get home." come
 Short slices plus the recovery guard beat one long window on the hardest fixture in the set. A fixed
 30-second window is not the neutral default it looks like.
 
+### Finding 12: on non-speech, `small` and `base` invent turns, and the loop prints them
+
+The live loop shows whatever the decoder returns. Given audio that contains no speech, it returns
+filler, and there is nothing between the two — no confidence check, no speech probability, no list of
+known artefacts. Twelve seconds of pink noise at room-tone level, through the identical harness
+(`--from-file`, so the input is byte-identical for each model):
+
+| Model | Emitted | Reached the transcript | Live RTF |
+|---|---|---|---|
+| base | `[BLANK _AUDIO]` | **yes** | 0.41 |
+| small | `[no audio]` | **yes** | 0.30 |
+| large-v3-turbo | nothing, on all four decodes | no | 1.59 |
+
+This is not an artefact of synthesised noise. Two runs against the Mac's own room tone with nobody
+speaking produced `[BLANK _AUDIO]` and `[INAUDIBLE]`. Warm-up is not the cause: the run that
+hallucinated `[INAUDIBLE]` used `--no-warm-up`, and neither run echoed the fixture text the warm-up
+had just decoded.
+
+The timestamps give it away. `base` put its last word at **29.1 s inside a 12.0 s slice**; on the
+microphone, 29.4 s inside an 11.8 s one. The decoder is not reporting on audio it heard.
+
+Turbo's silence is the informative result: it is the model behaving, not the library. WhisperKit
+*looks* like it filters these windows and does not. `SegmentSeeker` skips a window when
+`noSpeechProb > 0.6`, but WhisperKit never populates the field — `TextDecoder.swift:821` reads
+`let noSpeechProb: Float = 0 // TODO: implement no speech prob`. So the skip is unreachable, the
+`DecodingFallback` silence branch is dead code, and `noSpeechThreshold` cannot fire under any input.
+
+**This is a library gap, not a model choice, and it is not our bug to investigate further** — the
+maintainers have tracked it since 2024 (issue #27, still open) and a fix was only opened as an
+unmerged PR on 2026-10-10. The measurement above is unaffected either way: `small` is confidently
+wrong on non-speech, so even a working no-speech check would be overridden by the `avgLogProb`
+escape hatch that `SegmentSeeker` applies next.
+
+The related gap matters more for the fix. OpenAI Whisper suppresses roughly 80 non-speech tokens by
+default, which is what stops `[BLANK_AUDIO]` being generated at all; WhisperKit ships
+`self.suppressTokens = suppressTokens ?? [] // nonSpeechTokens() // TODO: implement these as default`
+(`Configurations.swift:240`), and `nonSpeechTokens()` does not exist in the package. So the decoder
+is free to emit these tokens and the harness has to catch them after the fact — which is what
+`SpeechGate` does below. Passing an explicit `suppressTokens` list is the untried alternative and
+would prevent the text rather than discard it.
+
+#### The fix, and the measurement that rejected the first version of it
+
+`SpeechGate` now sits between the decoder and the screen. Its first version was wrong in a way worth
+recording, because the wrongness is the finding.
+
+Calibrated on near-field speech and room tone, the numbers looked like a clean gap:
+
+| Audio | Text | `noSpeechProb` | `avgLogprob` |
+|---|---|---|---|
+| room tone | `[no audio]` | 0.00 | −0.48 … −0.62 |
+| room tone | `[BLANK _AUDIO]` | 0.00 | −0.37 … −0.50 |
+| speech, near field | the fixture's four lines | 0.00 | −0.18 … −0.21 |
+| **speech, far field** | **`ami-meeting-far`** | 0.00 | **−0.41 … −0.70** |
+
+Two rows were missing from that table, and they change the conclusion twice over.
+
+**`noSpeechProb` is not a discriminator at all** — it read 0.00 for every row, filler included. That
+is the measurement explaining why WhisperKit's own silence check cannot help here, and it is why the
+gate cannot simply reuse it.
+
+**Mean log-probability cannot carry the decision either.** On the first three rows a threshold of
+−0.40 looks like it sits in a gap. Add the far field and the distributions overlap almost entirely:
+real speech in a real room runs from −0.41 down to −0.70, which is inside the filler range. At −0.40
+the gate threw away this, from `ami-meeting-far`:
+
+> Well, this is the kickoff meeting for our project. And this is just what we're going to be doing
+> over the next 25 minutes.
+
+A complete and correct transcription of the fixture's opening, discarded. **A gate that eats real
+speech is worse than the hallucination it was built to stop**, because the reader cannot tell what
+was lost — and far field is the scenario the app exists for (Finding 4), not an edge case.
+
+So the rule was demoted. The work is done by the structural test — *is the whole utterance one
+bracketed annotation?* — which caught every hallucination actually observed and fired on none of the
+real far-field speech. `avgLogprob` survives only as a backstop set below the worst real speech
+measured, where it can catch gross decoder failure and nothing else. Both are pinned by tests,
+including `testKeepsFarFieldSpeechThatAnEarlierVersionThrewAway`, which uses the dropped sentence
+above as its fixture.
+
+The transferable lesson: **a threshold calibrated on two conditions is not calibrated.** The
+near-field rows were not a small gap, they were half a distribution.
+
+### Finding 13: the opening seconds of a session are not captured at all
+
+`live` loads and warms the model *before* it opens the audio source, so the microphone is not live
+until that finishes. Whatever is said in the meantime is not misheard — it is absent.
+
+Measured by padding `quiet-single-speaker` with ten seconds of digital silence
+(`adelay=10000:all=1,apad=pad_dur=6`, verified with `silencedetect`), then playing it aloud into the
+microphone from the same shell command that starts the capture, so playback and capture cannot race:
+
+- capture began **≈2.1 s into playback** — 28.6 s captured against 30.7 s played
+- all four lines came back verbatim, `Good morning!` included
+- the same fixture with no lead lost `Good morning.` in both earlier runs, capture having started
+  ≈0.65 s in
+
+So the earlier miss was never acoustic, and never the room: it is startup latency, and it lands
+exactly where it hurts. On the phone the first thing said is the thing that prompted the button
+press, and it is the one sentence guaranteed to fall inside the warm-up.
+
+**Fixed**, and the fix turned out to be three lines. `LiveTranscriber.run` now opens the stream and
+*then* runs the warm-up, which it takes as a closure. The stream buffers unboundedly, so the model
+load is paid in latency rather than in lost words — the opening sentence arrives a second late
+instead of not at all. The ordering is the whole fix; no new component was needed, because the
+buffering that made it possible was already there.
+
+Replayed through `--from-file` the same padded file gives four clean turns, 0 recoveries and RTF
+0.08, identical warm and cold — which is also the regression test for this path.
+
+### Finding 14: cheap acoustic features cannot group speakers, and the measurement that said they could was measuring the wrong voices
+
+Speaker grouping is the app's only visual structure — a caption aid that cannot show *who* is
+talking is a wall of text. Every way of building it rests on one assumption: that a person sounds
+more like themselves than like anyone else in the room. `Scripts/speaker_signal.py` tests that
+directly, on isolated per-turn audio, so a failure cannot be blamed on segmentation.
+
+Two hand-rolled features — median F0 by autocorrelation, and a 12-band mel-spaced energy profile.
+They were chosen because they are cheap, but nothing below turns on cost: the target is an iPhone
+15 Pro Max or newer, where an expensive component is acceptable as long as it keeps up **in real
+time**. So this is not a search for a cheaper way to do it. It is a test of whether the raw acoustics
+carry the answer at all. Distance is measured between pairs of turns by the same speaker against
+pairs by different speakers; **overlap** is the share of different-speaker pairs sitting closer
+together than the median same-speaker pair, so 50% is a coin flip.
+
+| Audio | Feature | Same speaker | Different speakers | Overlap |
+|---|---|---|---|---|
+| `ami-meeting`, real, headset | F0 Δ | 37.5 ± 29.7 Hz | 57.1 ± 36.7 Hz | 29% |
+| `ami-meeting`, real, headset | band cosine | 0.0345 | 0.0371 | **52%** |
+| `ami-meeting-far`, real, array | F0 Δ | 69.5 ± 67.8 Hz | 99.7 ± 58.5 Hz | 14% |
+| `ami-meeting-far`, real, array | band cosine | 0.0475 | 0.0519 | **52%** |
+| synthetic twin, `say` voices | band cosine | 0.1011 | 0.1735 | 20% |
+
+On real speech the band profile is a coin flip: same-speaker and different-speaker distances are
+the same number to three decimal places. F0 looks better until the distributions are read — the
+same-speaker spread (29.7 Hz on headset, 67.8 Hz far-field) is most of the way to the
+different-speaker spread, so the 14–29% overlap flatters it.
+
+The reason is visible in the per-turn figures. Speaker B in `ami-meeting` measures 190, 195, 198,
+**213** and **232** Hz across five turns — a 42 Hz spread within one person, whose 232 Hz turn is
+*"want to introduce yourself again?"*. F0 is tracking **intonation**, not identity: a question from
+a low-pitched speaker overtakes a statement from a high-pitched one. The band profile fails for the
+complementary reason — a 12-band energy average over a whole turn is mostly a function of which
+vowels the sentence happens to contain. Both features measure *what was said* far more than *who
+said it*, which is the well-known reason speaker recognition uses trained embeddings rather than
+raw acoustics.
+
+**The first version of this measurement said the opposite, and the reason is worth keeping.** It
+read `.fixture-build/ami/turn_NNN.caf` and called those turns real speech. They are not:
+`make-ami-fixtures.sh` renders them with `say`, one fixed macOS voice per participant, as the
+synthetic twin. On those, band cosine separated cleanly — 0% overlap once turns under half a second
+were excluded. That number was an artifact of text-to-speech, where a voice is bit-for-bit the same
+speaker every time it talks, and it would have been recorded as a finding about people. The corrected
+run reverses it. Measuring the twin is still worth doing, but only ever *against* the real set.
+
+The conclusion is not "try harder on features", and it is not a cost problem to be traded away
+against quality — the failing quantity here is accuracy, and a bigger compute budget does not buy
+it. Hand-rolled acoustics are the wrong instrument because they measure the sentence rather than the
+speaker. A trained embedding is the right one: `SpeakerKit` ships inside the WhisperKit package as
+an exposed product, and is the remaining candidate. Its accuracy on these fixtures is
+**unmeasured** — as is its real-time factor, which is the only cost question that matters here.
+
 ## Layout
 
 ```
@@ -427,11 +589,13 @@ Sources/CaptionKit/
   Fixtures/         Fixture discovery and metadata
   Evaluation/       Fuses the three measurements into one report
 Sources/CaptionHarness/   The CLI
-Fixtures/                 Audio, reference transcripts, metadata — see Fixtures/README.md
+Fixtures/                 Audio, reference transcripts, metadata, speaker annotations
 Scripts/
   make-fixtures.sh        Regenerates the synthetic fixtures from their scripts
   make-ami-fixtures.sh    Cuts the recorded fixtures out of the AMI corpus, and their twin
   ami_annotations.py      Turns AMI word annotations into a reference transcript
+  speaker_annotations.py  Writes Fixtures/annotations/ — who spoke each reference line
+  speaker_signal.py       Measures whether cheap acoustic features separate the real speakers
 ```
 
 The committed fixtures are 4.6 MB synthetic and 4.3 MB recorded. The AMI corpus they are cut from
@@ -445,7 +609,9 @@ loading a model, and a second recognizer could be scored by the same code.
 **Turn segmentation is not diarization.** Every silence over 800 ms starts a new visual block. It
 cannot tell who spoke — only that speech stopped and restarted. That is enough for the visual job
 and costs a fraction of real diarization, which matters when this runs continuously on a phone.
-WhisperKit does ship `SpeakerKit` if real speaker labels are ever wanted.
+WhisperKit does ship `SpeakerKit` if real speaker labels are ever wanted — and Finding 14 measured
+that the cheap alternative does not work on real speech, so `SpeakerKit` is not a nicety to reach
+for later. It is the only candidate left.
 
 **Word timings are required, not optional.** Without them a turn can only break at recognizer
 segment boundaries, and Whisper packs up to 30 seconds into one segment regardless of who was
@@ -477,13 +643,34 @@ reading "manager.").
   injectable through `WhisperKitConfig`, so Silero drops in behind the same interface. Not yet done.
   This matters more than it did before the first results: the `family-dinner` run showed that the
   dominant error is unsought speech, which is precisely what a speech-aware VAD could gate.
-- **Only `small` has been run live.** `base` was measured offline but never through the live loop,
-  and `large-v3-turbo` cannot keep up. Whether an intermediate model is the better trade — turbo's
-  accuracy at a rate the loop can sustain — is unresolved, and it is the first thing to settle.
+- **The gate is structural, so it only stops hallucinations that look like artefacts.** Finding 12:
+  `SpeechGate` removes bracketed filler, which is every hallucination observed so far, and no
+  threshold on the decoder's confidence can safely do more — the measured distributions of real
+  far-field speech and filler overlap. A *fluent* hallucination ("Thank you for watching.") would
+  still reach the screen. Catching those needs a signal not yet tried: per-word probability, the
+  audio-level history, or an n-gram repetition check. **An untried alternative sits upstream of all
+  of them:** passing an explicit `suppressTokens` list, which is what OpenAI Whisper does by default
+  and what WhisperKit leaves as a `TODO` (Finding 12). That would stop the tokens being generated
+  rather than discard them after the fact, and it is a one-line experiment.
+- **`SpeakerKit` is batch-only and is not the way to live speaker labels.** It ships inside the
+  WhisperKit package and is unused here. Its public surface is a single whole-array
+  `SpeakerKit.diarize(audioArray:)` with no session, no partial output and no windowing, so it can
+  only label *completed* audio — the wrong shape for a caption that must colour a turn while it is
+  still being spoken. Its open issues cluster on exactly the join between its segments and ours,
+  including "the last turn is attributed to the wrong speaker" (a tail-padding effect, and the tail
+  is always the turn on screen). The vendored copy's embedder and clustering types are `internal`,
+  so a hand-rolled streaming wrapper on top of them is not available either. See below for the
+  alternative.
+- **Only `small` has been run live on speech.** `base` and `large-v3-turbo` have now been through the
+  loop on non-speech (Finding 12), but neither has captioned a fixture: `base` was measured offline
+  only, and turbo cannot keep up. Whether an intermediate model is the better trade — turbo's
+  accuracy at a rate the loop can sustain — is unresolved, and it is still the first question after
+  the gate above.
 - **The live loop has never been run on real conversational audio.** Every number in Findings 9–11
-  comes from replaying the fixtures through `--from-file`. That exercises the buffering, the turn
-  rule and the recovery path, but not a microphone, a room, or a person who does not know they are
-  being captioned.
+  comes from replaying the fixtures through `--from-file`. In the microphone runs the audio was still
+  a fixture played out of the speakers. That exercises the buffering, the turn rule, the recovery
+  path, the room and the capture startup, but not a person who does not know they are being
+  captioned.
 - **The live RTF figures are from an M2 Pro.** An A17 Pro's Neural Engine is smaller, so the margin
   between `small` at 0.42 and the wall at 1.0 is the number that must be re-measured on device.
 - **Nothing from the target environment is recorded yet.** The `ami-*` fixtures are real speech in a
@@ -508,7 +695,24 @@ reading "manager.").
 ## Verifying
 
 ```bash
-make unit           # 103 tests, no model required
+make unit           # 116 tests, no model required
 make test           # runs the fixtures and writes reports/latest.md
 make live-file FIXTURE=family-dinner   # the live loop, replayed, with per-decode diagnostics
 ```
+
+**Run live measurements alone.** The live loop is a real-time system, so anything else on the
+machine changes what it measures. This is not a theoretical caution: a fixture sweep run alongside
+an unrelated batch analysis reported `family-dinner` losing its last three turns — 11.1 s of speech
+never shown — and it looked exactly like the `SpeechGate` eating real speech. Re-run on an idle
+machine, the same fixture and the same flags gave **zero drops and a 0.5 s tail**, and so did all
+four cells of the warm-up × gate matrix around it.
+
+What happened is worth knowing, because the failure was informative rather than random. Under CPU
+contention the decoder exhausts its fallback ladder and returns an empty result, which the gate
+correctly discards — so `gatedDecodes` rises and the transcript loses its tail. The drop count was
+measuring how busy the machine was. The same signature is visible directly: a decode logged as
+`0 words (0 decoded) … lp +0.00 cr 0.00 t 1.0`.
+
+The tell is the real-time factor. The contended `family-dinner` run reported 0.53 against 0.24–0.29
+for the same fixture on an idle machine. **A live RTF well above its own baseline means the numbers
+are not comparable**, whatever else they say.
