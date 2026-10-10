@@ -13,6 +13,13 @@ public protocol LiveAudioSource: AnyObject {
 
     /// Stops capture. Safe to call more than once.
     func stop() async
+
+    /// Where this audio is coming from, for the status display.
+    ///
+    /// Re-read rather than cached: a device can change under a running session, and a Bluetooth
+    /// headset swapping its own profile mid-call is exactly the kind of thing that is invisible in
+    /// the transcript and obvious on a status line.
+    func origin() -> AudioOrigin
 }
 
 public enum LiveAudioError: Error, CustomStringConvertible {
@@ -59,6 +66,10 @@ public final class MicrophoneAudioSource: LiveAudioSource, @unchecked Sendable {
     public func stop() async {
         processor.stopRecording()
     }
+
+    public func origin() -> AudioOrigin {
+        AudioInputDevice.current()
+    }
 }
 
 /// Plays a file into the live loop at wall-clock pace.
@@ -73,6 +84,12 @@ public final class FileAudioSource: LiveAudioSource, @unchecked Sendable {
     private let chunkSeconds: Double
     private let limitSeconds: Double?
     private var started = false
+
+    /// Duration of the audio that will actually be played, once `--max-seconds` is applied. Known
+    /// only after the file is read, which happens on `stream()`, so the status display shows the
+    /// full file length until then.
+    private let lock = NSLock()
+    private var playedSeconds: Double?
 
     /// - Parameters:
     ///   - speed: Wall-clock multiplier. 1 is real time; 20 finishes a 46-second fixture in about
@@ -98,6 +115,7 @@ public final class FileAudioSource: LiveAudioSource, @unchecked Sendable {
         if let limitSeconds {
             samples = Array(samples.prefix(Int(limitSeconds * 16_000)))
         }
+        lock.withLock { playedSeconds = Double(samples.count) / 16_000 }
 
         let chunkSize = max(1, Int(16_000 * chunkSeconds))
         let chunks = stride(from: 0, to: samples.count, by: chunkSize).map {
@@ -133,4 +151,27 @@ public final class FileAudioSource: LiveAudioSource, @unchecked Sendable {
     }
 
     public func stop() async {}
+
+    public func origin() -> AudioOrigin {
+        let played = lock.withLock { playedSeconds }
+
+        var details = ["16 kHz"]
+        if let played {
+            details.insert("\(Self.clock(played)) of audio", at: 0)
+        }
+        if speed != 1 {
+            details.append(String(format: "%.1fx", speed))
+        }
+        return AudioOrigin(
+            kind: .file,
+            name: url.lastPathComponent,
+            details: details,
+            duration: played
+        )
+    }
+
+    private static func clock(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
 }

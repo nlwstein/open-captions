@@ -74,8 +74,9 @@ live-file: $(HARNESS)
 ## The engine the app will ship, running live with one colour per speaker. This is the one to sit
 ## in front of: `live` above is the older Whisper loop and has no diarization at all, so it cannot
 ## show what speakers feel like. Ctrl-C to stop.
+## RECORD=run.wav also writes everything it heard, so a run worth reporting can be replayed.
 stream: $(HARNESS)
-	$(HARNESS) stream
+	$(HARNESS) stream $(if $(RECORD),--record "$(RECORD)",)
 
 ## The same pipeline off a recording instead of the microphone — how it is tested without asking
 ## anyone to talk into a laptop. `make stream-file FIXTURE=family-dinner SPEED=4` to hurry it.
@@ -84,6 +85,7 @@ stream: $(HARNESS)
 ## material than the synthetic fixtures, which are text-to-speech of an imaginary family.
 ## SECONDS stops after that much audio — a full DiPCo session is 25 minutes.
 ##   make stream-file FIXTURE=~/Downloads/live-caption-samples/S02-seven-channel-mix.wav SECONDS=90
+## RECORD=run.wav also writes what it heard, so the same audio can be replayed after a change.
 STREAM_AUDIO = $(if $(findstring /,$(FIXTURE)),$(FIXTURE),Fixtures/audio/$(FIXTURE).wav)
 STREAM_LIMIT = $(if $(SECONDS),--max-seconds $(SECONDS),)
 stream-file: $(HARNESS)

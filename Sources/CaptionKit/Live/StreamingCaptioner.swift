@@ -23,6 +23,77 @@ public struct StreamedTurn: Sendable, Equatable {
     public var isOpen: Bool
 }
 
+/// A snapshot of how the engine is doing, alongside the words it has produced.
+///
+/// Every field here exists because something went wrong without it. `realTimeFactor` is the one
+/// that matters most: a live pipeline that has fallen behind still produces correct text, just late,
+/// and nothing in the transcript says so. The talk times are the second: a slot that goes quiet ten
+/// minutes in, while a new one appears, *is* the colour-drift failure, visible while it happens
+/// rather than inferred from a score afterwards.
+public struct CaptionerStatus: Sendable {
+    /// Seconds of audio consumed. The clock the transcript's timestamps are on.
+    public var audioSeconds: Double = 0
+
+    /// Seconds of wall clock since the run started.
+    public var wallSeconds: Double = 0
+
+    /// Wall clock per second of audio. Below 1 means keeping up; above 1 means falling behind and
+    /// never recovering on a live source. Only meaningful at playback speed 1 — replaying a file
+    /// fast makes this a statement about the file source, not about the engine.
+    public var realTimeFactor: Double = 0
+
+    /// Time spent inside the engine, per second of audio. This is the number that says whether the
+    /// thing can keep up, and unlike `realTimeFactor` it does not care how fast the audio was
+    /// played: below 1 the engine needs less than real time, and the gap to 1 is the headroom a
+    /// phone's smaller Neural Engine will eat into.
+    public var processingLoad: Double = 0
+
+    public var updates: Int = 0
+    public var lastUpdateSeconds: Double = 0
+    public var slowestUpdateSeconds: Double = 0
+    /// Slowest update in the recent past, so a single hiccup at startup stops dominating.
+    public var recentSlowestUpdateSeconds: Double = 0
+
+    public var words: Int = 0
+    public var turns: Int = 0
+
+    /// dBFS of the most recent chunk, and the same on a 0–1 display scale.
+    public var level: Float = -120
+    public var normalizedLevel: Float = 0
+    public var isSpeaking: Bool = false
+
+    /// Seconds attributed to each Sortformer slot. A slot missing from this is one that has never
+    /// been heard.
+    public var talkTime: [Int: Double] = [:]
+
+    /// Total length, when the source is a file. Nil for a microphone.
+    public var sourceDuration: Double?
+
+    public init() {}
+
+    /// Slots that have been heard, in order.
+    public var speakers: [Int] { talkTime.keys.sorted() }
+}
+
+/// Everything the engine produces for one chunk of audio: the conversation so far, and where the
+/// engine itself stands.
+public struct CaptionerUpdate: Sendable {
+    public var turns: [StreamedTurn]
+    public var status: CaptionerStatus
+
+    /// The samples this update covers, 16 kHz mono. The same audio both models just saw.
+    ///
+    /// Carried through rather than kept private because two things need it downstream and neither
+    /// can reconstruct it: recording a session for replay, and — later — slicing an utterance back
+    /// out to embed for speaker enrolment.
+    public var audio: [Float]
+
+    /// The one update after the stream ends. A renderer that rate-limits its repaints has to know
+    /// which frame it is not allowed to drop, or the last words of a conversation can be decoded and
+    /// never drawn.
+    public var isFinal: Bool
+}
+
 /// Live captioning from a stream of audio: Parakeet EOU for the words, Sortformer for the speakers.
 ///
 /// This is the engine the app is being built around, wired the way the app will wire it — the same
@@ -97,13 +168,9 @@ public final class StreamingCaptioner: @unchecked Sendable {
 
     /// Runs until the source stops. `onUpdate` is called after every audio chunk with the whole
     /// conversation so far, so a renderer can rewrite the open turn rather than only append.
-    ///
-    /// `isFinal` marks the one update after the stream ends. A renderer that rate-limits its
-    /// repaints has to know which frame it is not allowed to drop, or the last words of a
-    /// conversation can be decoded and never drawn.
     public func run(
         source: LiveAudioSource,
-        onUpdate: @escaping @Sendable ([StreamedTurn], Bool) -> Void
+        onUpdate: @escaping @Sendable (CaptionerUpdate) -> Void
     ) async throws {
         // 16 kHz mono Float32 is what both models want; the audio sources already deliver it, so
         // this format is a promise about the input rather than a conversion.
@@ -119,9 +186,19 @@ public final class StreamingCaptioner: @unchecked Sendable {
         var consumed = 0
         var clock = 0.0
 
+        var status = CaptionerStatus()
+        status.sourceDuration = source.origin().duration
+        var meter = AudioLevelMeter()
+        var recentUpdates: [Double] = []
+        var busy = 0.0
+        let started = Date()
+
         for try await chunk in try await source.stream() {
             guard !chunk.isEmpty else { continue }
+            let updateStarted = Date()
             clock += Double(chunk.count) / 16_000
+
+            meter.append(chunk)
 
             // Words first: EOU buffers internally, so feeding it a short chunk is correct and it
             // decodes whenever it has accumulated a full one.
@@ -135,14 +212,64 @@ public final class StreamingCaptioner: @unchecked Sendable {
             diarizer.addAudio(chunk)
             _ = try? diarizer.process()
 
-            onUpdate(turns(words: words, open: true), false)
+            let built = turns(words: words, open: true)
+            let elapsed = Date().timeIntervalSince(updateStarted)
+            busy += elapsed
+            Self.record(elapsed, into: &recentUpdates)
+
+            status.audioSeconds = clock
+            status.wallSeconds = Date().timeIntervalSince(started)
+            status.realTimeFactor = clock > 0 ? status.wallSeconds / clock : 0
+            status.processingLoad = clock > 0 ? busy / clock : 0
+            status.updates += 1
+            status.lastUpdateSeconds = elapsed
+            status.slowestUpdateSeconds = max(status.slowestUpdateSeconds, elapsed)
+            status.recentSlowestUpdateSeconds = recentUpdates.max() ?? elapsed
+            status.words = words.count
+            status.turns = built.count
+            status.level = meter.level
+            status.normalizedLevel = meter.normalizedLevel
+            status.isSpeaking = meter.isSpeaking
+            status.talkTime = Self.talkTime(of: built)
+
+            onUpdate(CaptionerUpdate(turns: built, status: status, audio: chunk, isFinal: false))
         }
 
         // Flush whatever EOU is still holding, then take the last of it.
         _ = try? await eou.finish()
         _ = await harvest(into: &words, consumed: consumed, clock: clock)
         _ = try? diarizer.finalizeSession()
-        onUpdate(turns(words: words, open: false), true)
+        let built = turns(words: words, open: false)
+        status.audioSeconds = clock
+        status.wallSeconds = Date().timeIntervalSince(started)
+        status.realTimeFactor = clock > 0 ? status.wallSeconds / clock : 0
+        status.processingLoad = clock > 0 ? busy / clock : 0
+        status.words = words.count
+        status.turns = built.count
+        status.talkTime = Self.talkTime(of: built)
+        onUpdate(CaptionerUpdate(turns: built, status: status, audio: [], isFinal: true))
+    }
+
+    /// Keeps the last second or so of per-chunk timings, for a "how bad is it right now" reading
+    /// that a whole-run maximum cannot give once one slow chunk has set it.
+    private static func record(_ seconds: Double, into timings: inout [Double]) {
+        timings.append(seconds)
+        // ~10 chunks a second, so 30 is about three seconds of history.
+        if timings.count > 30 { timings.removeFirst(timings.count - 30) }
+    }
+
+    /// Seconds of speech attributed to each slot, as the reader sees it.
+    ///
+    /// Measured from the turns rather than from the diarizer's own segments on purpose: segments get
+    /// revised as they finalize, so their totals move for reasons the display would have to explain,
+    /// while a turn is what was actually drawn.
+    private static func talkTime(of turns: [StreamedTurn]) -> [Int: Double] {
+        var totals: [Int: Double] = [:]
+        for turn in turns {
+            guard let speaker = turn.speaker else { continue }
+            totals[speaker, default: 0] += max(0, turn.end - turn.start)
+        }
+        return totals
     }
 
     // MARK: - Recogniser output
