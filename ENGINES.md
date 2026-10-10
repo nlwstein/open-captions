@@ -824,28 +824,31 @@ second late. That is the failure mode worth instrumenting on the real hardware.
 
 Every figure in this document up to this point comes from a five-minute window. A caption reader
 leaves the thing on for a meal, so the shipping configuration was run over the full **thirty minutes**
-of DiPCo `S02` in one session and watched for the two failures only time reveals:
+of DiPCo `S02` in one continuous session, on both machines:
 
-| | 30-minute run |
-|---|---|
-| Audio transcribed | 1 800 s (30.0 min), one continuous session |
-| Words emitted | 3 995 |
-| Turns | 402 |
-| Slowest single processing pass | 0.41 s |
-| RSS while models load | 1 527 MB |
-| RSS, settled → final | 1 067 MB → **977 MB** |
+| | M2 Pro laptop | M4 Mac mini |
+|---|---|---|
+| Audio transcribed | 1 800 s (30.0 min) | 1 800 s (30.0 min) |
+| Throughput | 3.51× real time | **7.28× real time** |
+| Slowest single processing pass | 0.41 s | **0.13 s** |
+| Words emitted | 3 995 | 3 978 |
+| Turns | 402 | 405 |
+| RSS while models load | 1 527 MB | not sampled |
+| RSS, settled → final | 1 067 MB → **977 MB** | not sampled |
 
-**It finishes 91 MB lighter than it settled.** Memory peaks while the models load and then declines
-across the rest of the run, so there is no upward trend to fit a leak to. Nothing degrades with time:
-the slowest single processing pass over half an hour is **0.41 s**, within the 1120 ms of lookahead the
-engine carries, which means the five-minute figures are not a warm-up effect that decays once a
-session gets long.
+**The M4 gives up 4% of its throughput over half an hour** — 7.59× on a five-minute window against
+7.28× on thirty minutes — and its worst processing pass is **unchanged at 0.13 s**. Nothing degrades
+with time, which is the question a five-minute benchmark cannot answer and the reason this run exists.
 
-One caveat: that run executed alongside other work on the same laptop, so its throughput — 3.5× real
-time — is contended and understates the machine. The memory result does not depend on how much of the
-CPU was free. **The latency result does**, and that run's 0.41 s is itself an example — see the
-contention row in the Mac table above, where the same window on the same laptop produced a worst pass
-of 0.16 s idle and 0.40 s busy.
+The laptop column is where the memory result lives. **It finishes 91 MB lighter than it settled**:
+memory peaks while the models load and then declines across the rest of the run, so there is no upward
+trend to fit a leak to.
+
+Two caveats, both about the laptop column. Its run executed alongside other work on the same machine,
+so its throughput of 3.5× is contended and understates the hardware — the idle figure is the 6.10× in
+the table above. And the memory result does not depend on how much of the CPU was free, but **the
+latency result does**: that 0.41 s is itself an example, against 0.16 s for the same window on the
+same laptop while idle.
 
 ### Chunk size: 1120 ms is the sweet spot
 
