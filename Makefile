@@ -73,23 +73,30 @@ live-file: $(HARNESS)
 
 ## The engine the app will ship, running live with one colour per speaker. This is the one to sit
 ## in front of: `live` above is the older Whisper loop and has no diarization at all, so it cannot
-## show what speakers feel like. Ctrl-C to stop.
-## RECORD=run.wav also writes everything it heard, so a run worth reporting can be replayed.
+## show what speakers feel like.
+##
+## While it runs:  space/f flag the moment   1-4 name a slot (enter accepts, esc cancels)
+##                 c correct the newest turn's slot   Ctrl-C stops and still saves everything
+##
+## RECORD=run.wav writes everything it heard; DUMP=run.json writes every turn, every diarizer
+## segment behind it, the names given and the moments flagged. Do both: the dump says which second
+## to open the audio at, and the audio is the only way to check the dump was read right.
 stream: $(HARNESS)
-	$(HARNESS) stream $(if $(RECORD),--record "$(RECORD)",)
+	$(HARNESS) stream $(if $(RECORD),--record "$(RECORD)",) $(if $(DUMP),--dump "$(DUMP)",)
 
 ## The same pipeline off a recording instead of the microphone — how it is tested without asking
 ## anyone to talk into a laptop. `make stream-file FIXTURE=family-dinner SPEED=4` to hurry it.
-## SPEED is a wall-clock multiplier, so leave it at 1 to judge the latency honestly.
+## Same keys as `stream`. SPEED is a wall-clock multiplier, so leave it at 1 to judge latency
+## honestly; load in the footer is the engine's own cost and reads the same at any speed.
 ## FIXTURE is a fixture name, or any path to any wav: the real DiPCo recordings are far better
 ## material than the synthetic fixtures, which are text-to-speech of an imaginary family.
 ## SECONDS stops after that much audio — a full DiPCo session is 25 minutes.
 ##   make stream-file FIXTURE=~/Downloads/live-caption-samples/S02-seven-channel-mix.wav SECONDS=90
-## RECORD=run.wav also writes what it heard, so the same audio can be replayed after a change.
 STREAM_AUDIO = $(if $(findstring /,$(FIXTURE)),$(FIXTURE),Fixtures/audio/$(FIXTURE).wav)
 STREAM_LIMIT = $(if $(SECONDS),--max-seconds $(SECONDS),)
 stream-file: $(HARNESS)
-	$(HARNESS) stream --from-file "$(STREAM_AUDIO)" --speed $(or $(SPEED),1) $(STREAM_LIMIT)
+	$(HARNESS) stream --from-file "$(STREAM_AUDIO)" --speed $(or $(SPEED),1) $(STREAM_LIMIT) \
+		$(if $(RECORD),--record "$(RECORD)",) $(if $(DUMP),--dump "$(DUMP)",)
 
 # ---------------------------------------------------------------------------------------------
 # Building and fixtures

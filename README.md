@@ -393,6 +393,59 @@ ships. Read the colours as a hint rather than a fact: the failure to watch for i
 but a colour that *moves* to a different person mid-conversation, which is the one thing a reader
 cannot detect.
 
+#### Reading the screen
+
+Every row is there to answer a question that a transcript cannot.
+
+| Row | What it says |
+|---|---|
+| Title + source | What is being listened to, read live — a headset that fell back to hands-free, or a file that was not the recording anyone meant, looks exactly like the model being bad |
+| Meter | Input level in dBFS with a peak-hold bar, and whether anything is above the speech floor. Most "the model is mishearing" turns out to be "the model is being whispered at" |
+| Slots | Per-slot activity over the last second, then talk time per slot. A slot that goes quiet while a new one appears *is* the colour-drift failure, visible while it happens |
+| Footer | Position, engine load (busy seconds per audio second — speed-independent, unlike a wall-clock ratio), turns, words, contested turns, and any moments you flagged |
+| Transcript | One colour per slot, `+` on turns where the diarizer had two slots over threshold at once |
+
+**Load** is the number that decides whether any of this is usable. Above 1.00× the pipeline is
+falling behind in real time and can never catch up; the display turns it red and says so. It reads
+the same whether the audio arrived live or was fast-forwarded, which a wall-clock ratio does not —
+at `--speed 6` a ratio reports the speed of the file source and says nothing about the engine.
+
+#### Keys, while it runs
+
+A live session cannot be replayed, and a report of "the colours went weird somewhere in the middle"
+has nothing behind it. These three keys are the whole feedback loop:
+
+| Key | What it does |
+|---|---|
+| `space` or `f` | Flags the current moment on the audio clock. The footer shows the count and the last three times |
+| `1`–`4` | Name a slot: type a name, `⏎` accepts, `esc` cancels, an empty name clears it |
+| `c` | Correct the newest turn's slot — the mistake you actually notice is the line just written |
+| `Ctrl-C` | Stops the source, not the process: the transcript still prints and `--dump` still writes |
+
+A name shows as `Mum (2)`, keeping the slot number. That is deliberate. Slots drift — the
+slot-to-person mapping held for a whole recording in about four sessions of five on DiPCo — and a
+drifted colour is a curiosity while a drifted *name* is the app telling someone their daughter is
+their son. The number is there so the mismatch is visible against the talk-time chips, which stay
+numbered for the same reason. **A name labels the slot, not the voice**, and nothing in the engine
+yet checks that they still agree.
+
+#### Getting a run back
+
+`--record run.wav` writes what it heard and `--dump run.json` writes what it decided: every turn
+with its slot, times and overlap, every raw diarizer segment behind those turns, the names you gave,
+and the moments you flagged. Record and dump together are what make a spoken report actionable —
+the audio replays through `--from-file`, and the dump says which second to open it at.
+
+```bash
+make stream RECORD=run.wav
+.build/release/caption-harness stream --from-file run.wav --speed 1 --dump run.json
+```
+
+`⚠` The dump is the only way to tell a colour that was wrong because the *segment* was wrong from
+one where two segments genuinely overlapped, and those need opposite fixes.
+
+#### Upstream traps
+
 Two upstream traps are handled in `StreamingCaptioner.swift` and are worth knowing before touching
 it. `StreamingEouAsrManager.process(audioBuffer:)` returns an **empty string** — the transcription
 happens in `finish()`, so the obvious `transcript += try await process(...)` shows a blank screen

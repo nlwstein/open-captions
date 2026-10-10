@@ -91,6 +91,11 @@ public final class FileAudioSource: LiveAudioSource, @unchecked Sendable {
     private let lock = NSLock()
     private var playedSeconds: Double?
 
+    /// The task feeding the stream, held so `stop()` can end the run early. Without it the only way
+    /// out of a file replay is to wait it out or kill the process, which is exactly what a smoke
+    /// test needs to not do: the run being abandoned is often the interesting one.
+    private var producer: Task<Void, Never>?
+
     /// - Parameters:
     ///   - speed: Wall-clock multiplier. 1 is real time; 20 finishes a 46-second fixture in about
     ///     two seconds of wall clock while still exercising the same decisions.
@@ -146,11 +151,14 @@ public final class FileAudioSource: LiveAudioSource, @unchecked Sendable {
                 }
                 continuation.finish()
             }
+            lock.withLock { producer = task }
             continuation.onTermination = { _ in task.cancel() }
         }
     }
 
-    public func stop() async {}
+    public func stop() async {
+        lock.withLock { producer }?.cancel()
+    }
 
     public func origin() -> AudioOrigin {
         let played = lock.withLock { playedSeconds }

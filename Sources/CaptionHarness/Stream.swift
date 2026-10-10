@@ -128,6 +128,23 @@ struct Stream: AsyncParsableCommand {
         )
         renderer.recording = recorder?.url
 
+        // Started before the models load, so the first minutes of a smoke test — which is mostly
+        // staring at "loading models…" — are still typable, and the terminal is in raw mode from the
+        // start rather than after the first word.
+        //
+        // Ctrl-C stops the source rather than the process, so a run cut short still prints its
+        // transcript and writes its dump — and the interesting runs are usually the cut-short ones.
+        let keyboard = plain
+            ? nil
+            : Keyboard { [weak renderer, weak source] key in
+                guard case .interrupt = key else {
+                    renderer?.key(key)
+                    return
+                }
+                renderer?.note("stopping…")
+                Task { await source?.stop() }
+            }
+
         if !plain { renderer.enter() }
         renderer.note("loading models… this is slow the first time")
         try await captioner.prepare { message in renderer.note(message) }
@@ -141,10 +158,14 @@ struct Stream: AsyncParsableCommand {
                 session.receive(update)
             }
         } catch {
+            // The terminal has to go back to line-at-a-time before anything else prints, or the
+            // error message arrives one character at a time and the shell stays unusable.
+            keyboard?.restore()
             if !plain { renderer.leave() }
             throw error
         }
         await source.stop()
+        keyboard?.restore()
 
         if let recorder {
             try recorder.finish()
@@ -157,7 +178,9 @@ struct Stream: AsyncParsableCommand {
                 segments: captioner.diarizerSegments(),
                 status: session.status,
                 settings: settings(options),
-                source: source.origin()
+                source: source.origin(),
+                names: renderer.givenNames,
+                flags: renderer.flaggedMoments
             ).write(to: url)
             renderer.note("wrote \(url.path)")
         }
@@ -317,6 +340,14 @@ struct SessionDump {
     var settings: String
     var source: AudioOrigin
 
+    /// Names the tester gave the slots, by slot index. Recorded because a name is a claim about the
+    /// audio, and a dump read a week later needs to know which claim was being tested.
+    var names: [Int: String] = [:]
+
+    /// Audio-clock seconds the tester flagged while watching. These are the whole point of the
+    /// dump: they are the moments worth looking at, marked by the only person who was there.
+    var flags: [Double] = []
+
     func write(to url: URL) throws {
         try Data(json().utf8).write(to: url)
     }
@@ -334,6 +365,14 @@ struct SessionDump {
         out += "  \"slowestUpdateSeconds\": \(Self.number(status.slowestUpdateSeconds)),\n"
         out += "  \"words\": \(status.words),\n"
         out += "  \"contestedTurns\": \(status.contestedTurns),\n"
+
+        out += "  \"names\": {"
+        out += names.keys.sorted()
+            .map { "\(Self.string(String($0))): \(Self.string(names[$0] ?? ""))" }
+            .joined(separator: ", ")
+        out += "},\n"
+
+        out += "  \"flags\": [\(flags.map(Self.number).joined(separator: ", "))],\n"
 
         out += "  \"speechSeconds\": {"
         out += status.speakers
@@ -445,6 +484,15 @@ private final class StreamRenderer: @unchecked Sendable {
     private var displayedLevel: Float = 0
     private var lastMeterAt = Date.distantPast
     private var lastStatus: CaptionerStatus?
+    private var lastTurns: [StreamedTurn] = []
+    private var lastUpdate: CaptionerUpdate?
+
+    /// Names the tester has given the slots, and the moments they flagged. Guarded by `lock`,
+    /// because the keyboard thread writes them while this one draws.
+    private var names: [Int: String] = [:]
+    private var flags: [Double] = []
+    private var namingSlot: Int?
+    private var namingText = ""
 
     /// Set when the session is being written to disk, so the indicator is on every frame rather
     /// than in one message that scrolls away.
@@ -497,6 +545,81 @@ private final class StreamRenderer: @unchecked Sendable {
         started = date
     }
 
+    // MARK: - Annotations
+
+    /// Handles one keystroke.
+    ///
+    /// Deliberately tiny: flag the moment, or name a slot. Anything more would be a UI, and the
+    /// thing being tested is the engine — every key added here is one more way for a smoke test to
+    /// report on the harness instead of on the diarizer.
+    func key(_ key: Keyboard.Key) {
+        // State first, under the lock; drawing after, without it. `draw` takes the lock itself, so
+        // holding it across the redraw would deadlock the keyboard thread against the engine's.
+        lock.lock()
+
+        if let slot = namingSlot {
+            switch key {
+            case .enter:
+                let trimmed = namingText.trimmingCharacters(in: .whitespaces)
+                // An empty name takes one back off, which has to be possible: a name on the wrong
+                // slot is worse than no name, and it will happen while someone is learning which
+                // slot is which.
+                names[slot] = trimmed.isEmpty ? nil : trimmed
+                namingSlot = nil
+                namingText = ""
+            case .escape:
+                namingSlot = nil
+                namingText = ""
+            case .backspace:
+                if !namingText.isEmpty { namingText.removeLast() }
+            case .character(let character):
+                if namingText.count < Self.maximumNameLength { namingText.append(character) }
+            case .interrupt:
+                break
+            }
+        } else {
+            switch key {
+            case .character(let character) where ("1"..."4").contains(character):
+                namingSlot = Int(String(character)).map { $0 - 1 }
+                namingText = ""
+            case .character("f"), .character(" "):
+                flags.append(lastStatus?.audioSeconds ?? 0)
+            case .character("c"):
+                // Correct the slot the newest turn was given, which is the mistake a tester
+                // actually notices: the line just written was the wrong colour, and they want to
+                // say so without waiting for that slot to come round again.
+                if let speaker = lastTurns.last?.speaker {
+                    namingSlot = speaker
+                    namingText = names[speaker] ?? ""
+                }
+            default:
+                break
+            }
+        }
+
+        let update = lastUpdate
+        lock.unlock()
+
+        // A keystroke is the one event someone is waiting on, so it redraws at once rather than
+        // waiting out the throttle.
+        draw(update)
+    }
+
+    /// Long enough for "Grandma", short enough that it cannot push the label off a narrow line.
+    static let maximumNameLength = 12
+
+    var flaggedMoments: [Double] {
+        lock.lock()
+        defer { lock.unlock() }
+        return flags
+    }
+
+    var givenNames: [Int: String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return names
+    }
+
     /// Leaves the screen and reprints the conversation on the primary one.
     ///
     /// The alternate screen is discarded on exit, which would take the entire transcript with it —
@@ -513,7 +636,7 @@ private final class StreamRenderer: @unchecked Sendable {
         print("Transcript — \(options)")
         print(String(repeating: "─", count: 72))
         for turn in turns {
-            let label = Self.label(turn).padding(toLength: 11, withPad: " ", startingAt: 0)
+            let label = label(turn).padding(toLength: 11, withPad: " ", startingAt: 0)
             print("\(String(format: "%6.1fs", turn.start))  \(label) \(turn.text)")
         }
         print("")
@@ -526,7 +649,7 @@ private final class StreamRenderer: @unchecked Sendable {
             let closed = update.turns.filter { !$0.isOpen }
             while printed < closed.count {
                 let turn = closed[printed]
-                print("\(String(format: "%5.1fs", turn.start))  \(Self.label(turn))  \(turn.text)")
+                print("\(String(format: "%5.1fs", turn.start))  \(label(turn))  \(turn.text)")
                 printed += 1
             }
             return
@@ -534,6 +657,8 @@ private final class StreamRenderer: @unchecked Sendable {
 
         lock.lock()
         lastStatus = update.status
+        lastTurns = update.turns
+        lastUpdate = update
         let now = Date()
         // Rate-limited, because the captioner calls this once per audio chunk and drawing is far
         // more expensive than deciding: an unthrottled build repainted 565 times in ten seconds.
@@ -556,8 +681,8 @@ private final class StreamRenderer: @unchecked Sendable {
 
         let body = update.map { self.body($0.turns, width: width) } ?? []
 
-        // Five rows of chrome: title, rule, meter, footer, settings.
-        let available = max(1, rows - 5)
+        // Six rows of chrome: title, rule, meter, slots, footer, and the prompt or settings line.
+        let available = max(1, rows - 6)
         // Show the tail, because the app scrolls and the newest words are the ones being read.
         let visible = body.count > available ? Array(body.suffix(available)) : body
 
@@ -565,6 +690,7 @@ private final class StreamRenderer: @unchecked Sendable {
         out += clamp(header(width), to: width) + "\u{1B}[K\n"
         out += String(repeating: "─", count: width) + "\u{1B}[K\n"
         out += clamp(meterRow(update?.status), to: width) + "\u{1B}[K\n"
+        out += clamp(slotRow(update?.status), to: width) + "\u{1B}[K\n"
         for line in visible {
             out += clamp(line, to: width) + "\u{1B}[K\n"
         }
@@ -572,7 +698,7 @@ private final class StreamRenderer: @unchecked Sendable {
             out += "\u{1B}[K\n"
         }
         out += clamp(footer(update?.status), to: width) + "\u{1B}[K\n"
-        out += clamp(settingsLine(), to: width) + "\u{1B}[K"
+        out += clamp(promptOrSettings(), to: width) + "\u{1B}[K"
         write(out)
     }
 
@@ -656,6 +782,9 @@ private final class StreamRenderer: @unchecked Sendable {
         row += status.isSpeaking ? Self.boldEscape + "speaking" + Self.reset : dim("silent")
 
         // Speaker chips, most talk time first so the ordering does not reshuffle as slots appear.
+        // Numbered rather than named on purpose: this row is the drift detector, and the slot
+        // number is what stays comparable when a name turns out to be on the wrong person. The name
+        // is on the row below, next to the same colour.
         let ranked = status.talkTime.sorted { ($0.value, $0.key) > ($1.value, $0.key) }
         for (speaker, seconds) in ranked {
             let colour = Self.palette[speaker % Self.palette.count]
@@ -663,6 +792,42 @@ private final class StreamRenderer: @unchecked Sendable {
         }
         return row
     }
+
+    /// One bar per slot: how much of the last second the diarizer thinks that slot was speaking.
+    ///
+    /// This is the row that explains a colour while it is happening. `talkTime` on the row above is
+    /// a running total and barely moves; here a slot that is dark while the text is being coloured
+    /// with it, or two bars up at once, is the diarizer's confusion made visible at the moment it
+    /// matters rather than several seconds later when the transcript settles.
+    private func slotRow(_ status: CaptionerStatus?) -> String {
+        guard let status, !status.slotActivity.isEmpty else { return "" }
+
+        // Sorted by name so the bars stay in one place. Ranked by talk time they would reshuffle as
+        // the conversation moves, and a row that reorders itself is unreadable while it is the only
+        // thing on screen moving faster than the transcript.
+        var row = " ▌ "
+        var first = true
+        for (slot, activity) in status.slotActivity.enumerated() {
+            if !first { row += "  " }
+            first = false
+
+            lock.lock()
+            let name = names[slot]
+            lock.unlock()
+
+            let colour = Self.palette[slot % Self.palette.count]
+            let lit = Int((activity * Double(Self.slotBarWidth)).rounded())
+            // A dim floor rather than an empty one, so a slot that has never spoken still has a
+            // place on the row and the reader can see the app is listening to four people.
+            let bar = String(repeating: "▄", count: lit)
+                + String(repeating: "▁", count: max(0, Self.slotBarWidth - lit))
+            row += colour + bar + Self.reset
+            row += name.map { " " + $0 } ?? dim(" \(slot + 1)")
+        }
+        return row
+    }
+
+    static let slotBarWidth = 8
 
     /// Position and engine load. The load figure is the one that says whether any of this is
     /// usable: a live pipeline that has fallen behind still produces correct text, just late, and
@@ -691,6 +856,17 @@ private final class StreamRenderer: @unchecked Sendable {
             parts.append("\(status.contestedTurns) contested")
         }
 
+        // Flags are shown with the clock they were taken at, because a count is not actionable and
+        // the time is: it is the difference between "four things looked wrong" and being able to
+        // open the dump at 2:31.
+        lock.lock()
+        let flags = flags
+        lock.unlock()
+        if !flags.isEmpty {
+            let stamps = flags.suffix(3).map(Self.clock).joined(separator: " ")
+            parts.append(Self.palette[5] + "⚑ \(flags.count)" + Self.reset + " " + stamps)
+        }
+
         if stats || behind {
             parts.append(String(format: "update %.0f ms · worst %.0f ms",
                                 status.lastUpdateSeconds * 1000,
@@ -707,12 +883,30 @@ private final class StreamRenderer: @unchecked Sendable {
     /// A smoke test that produces a surprising result is only worth reporting if the settings that
     /// produced it are on screen — and the flags that move the most are the ones nobody remembers
     /// changing.
+    /// The naming prompt while one is open, and the settings line the rest of the time.
+    ///
+    /// The prompt takes the row over rather than appearing somewhere new: a line that comes and goes
+    /// would shift the transcript, and the transcript is the thing being watched.
+    private func promptOrSettings() -> String {
+        lock.lock()
+        let slot = namingSlot
+        let typed = namingText
+        lock.unlock()
+
+        guard let slot else { return settingsLine() }
+        return " Name slot \(slot + 1): " + Self.boldEscape + typed + Self.reset
+            + dim("▏  ⏎ accept · esc cancel · empty to clear")
+    }
+
     private func settingsLine() -> String {
         // The legend is not optional: `Speaker 2+` is unreadable without it, and an unexplained
         // marker on a screen built for judging the output is worse than no marker. "colour may be
         // wrong" rather than "two voices at once", because that is the part the reader has to act
         // on — the marker is a caveat, not a description of the audio.
-        " " + dim(options) + dim("   ·   Speaker N+ = crosstalk, colour may be wrong")
+        //
+        // The options come before the keys so that a narrow terminal drops the keys, which are
+        // learnable once, rather than the settings, which are the record of what was being tested.
+        " " + dim(options) + dim("   ·   N+ = crosstalk   ·   space flag · 1-4 name · c correct")
     }
 
     // MARK: - Turns
@@ -726,15 +920,28 @@ private final class StreamRenderer: @unchecked Sendable {
     /// The `+` means the model had more than one slot over threshold at once, so it was choosing.
     /// A rare marker — around 2% of a DiPCo session — because streaming Sortformer is decisive
     /// about who is speaking, and it is not always right to be.
-    static func label(_ turn: StreamedTurn) -> String {
-        turn.speaker.map { "Speaker \($0 + 1)\(turn.isContested ? "+" : "")" } ?? "—"
+    ///
+    /// A name, once given, replaces the number — and carries the slot's number with it, because the
+    /// name is a label on the *slot*. Slots drift: measured on DiPCo the slot-to-person mapping held
+    /// for a whole recording in four sessions of five, which means one dinner in five ends with a
+    /// name on the wrong person. Anonymous, a drifted colour is a curiosity; named, it is the app
+    /// telling someone their daughter is their son.
+    func label(_ turn: StreamedTurn) -> String {
+        guard let speaker = turn.speaker else { return "—" }
+        lock.lock()
+        let name = names[speaker]
+        lock.unlock()
+        // Named slots keep their number as well, so a drift is visible as a mismatch against the
+        // talk-time chips rather than hidden behind a plausible word.
+        let base = name.map { "\($0) (\(speaker + 1))" } ?? "Speaker \(speaker + 1)"
+        return turn.isContested ? base + "+" : base
     }
 
     /// One entry per visual line, already coloured.
     private func body(_ turns: [StreamedTurn], width: Int) -> [String] {
         var lines: [String] = []
         for turn in turns {
-            let label = Self.label(turn)
+            let label = label(turn)
             let colour = turn.speaker.map { Self.palette[$0 % Self.palette.count] } ?? Self.dimEscape
             let stamp = String(format: "%5.1fs ", turn.start)
 
@@ -830,6 +1037,152 @@ private final class StreamRenderer: @unchecked Sendable {
             columns += 1
         }
         return out + Self.reset
+    }
+}
+
+// MARK: - Keyboard
+
+/// Single-keystroke input while the run is going, so a smoke test can be annotated as it happens.
+///
+/// This exists because the feedback loop was otherwise lossy in the worst way: something looks wrong
+/// at about two minutes in, the session ends, and what crosses back is "the colours went weird
+/// somewhere in the middle". A keypress that stamps the audio clock turns that into a moment the
+/// dump can be opened at.
+///
+/// Raw mode and a reading thread rather than a run loop, because the main actor is busy decoding:
+/// the reader must not be able to block the engine, and the engine must not be able to drop a
+/// keypress. Nothing here needs to be delivered quickly — a few frames of latency is invisible — so
+/// the thread simply sleeps and hands whole keys to the callback.
+final class Keyboard: @unchecked Sendable {
+
+    enum Key: Equatable {
+        case character(Character)
+        case enter
+        case escape
+        case backspace
+        case interrupt
+    }
+
+    private let lock = NSLock()
+    private var original: termios?
+    private var running = true
+    private let handler: (Key) -> Void
+
+    /// The live instance, so a signal arriving on another thread can put the terminal back. One
+    /// session at a time, and `nil` as soon as it has restored.
+    private static let activeLock = NSLock()
+    private static var active: Keyboard?
+    private static var sources: [DispatchSourceSignal] = []
+
+    /// - Returns: nil when stdin is not a terminal — a piped run, or `--plain` — in which case
+    ///   there is nothing to read and no state to restore.
+    init?(handler: @escaping (Key) -> Void) {
+        guard isatty(STDIN_FILENO) == 1 else { return nil }
+        var current = termios()
+        guard tcgetattr(STDIN_FILENO, &current) == 0 else { return nil }
+        self.handler = handler
+        original = current
+
+        // Non-canonical so a key arrives without Enter, and no echo because the renderer owns every
+        // cell of the screen — an echoed character would land wherever the cursor happens to be and
+        // corrupt the frame until the next repaint.
+        //
+        // ISIG goes too, which is the part that matters most: leaving it on means Ctrl-C raises
+        // SIGINT and kills the process with the terminal still in raw mode, so the shell is left
+        // without echo and every subsequent command is typed blind. Clearing it turns Ctrl-C into
+        // an ordinary byte this object can see, which is what lets the run stop the way it always
+        // does — transcript reprinted, dump written, terminal restored.
+        var raw = current
+        raw.c_lflag &= ~tcflag_t(ICANON | ECHO | ISIG)
+        raw.c_cc.0 = 1     // VMIN: return as soon as one byte is available
+        raw.c_cc.1 = 0     // VTIME: never wait for more
+        guard tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0 else {
+            self.original = nil
+            return nil
+        }
+
+        Self.installSignalSafetyNet()
+        Self.activeLock.lock()
+        Self.active = self
+        Self.activeLock.unlock()
+
+        let thread = Thread { [weak self] in self?.read() }
+        thread.stackSize = 256 * 1024
+        thread.start()
+    }
+
+    deinit { restore() }
+
+    /// A kill from outside — `kill`, a closing terminal, a `timeout` wrapper — cannot be turned into
+    /// a keystroke, so the terminal has to be put back from the signal itself. The keyboard's own
+    /// Ctrl-C never comes through here.
+    private static func installSignalSafetyNet() {
+        activeLock.lock()
+        defer { activeLock.unlock() }
+        guard sources.isEmpty else { return }
+
+        let queue = DispatchQueue(label: "live-caption.signals")
+        for number in [SIGINT, SIGTERM, SIGHUP] {
+            // The default disposition is replaced by the source, but it must not *also* fire, or the
+            // process dies before the handler runs.
+            signal(number, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: number, queue: queue)
+            source.setEventHandler {
+                restore()
+                _exit(130)
+            }
+            source.resume()
+            sources.append(source)
+        }
+    }
+
+    /// Puts the terminal back, once, from whichever thread gets here first.
+    static func restore() {
+        activeLock.lock()
+        let keyboard = active
+        active = nil
+        activeLock.unlock()
+        keyboard?.restore()
+    }
+
+    func restore() {
+        lock.lock()
+        let saved = original
+        original = nil
+        running = false
+        lock.unlock()
+        guard var saved else { return }
+        tcsetattr(STDIN_FILENO, TCSANOW, &saved)
+    }
+
+    private func read() {
+        var byte: UInt8 = 0
+        while true {
+            lock.lock()
+            let alive = running
+            lock.unlock()
+            guard alive else { return }
+
+            let count = Foundation.read(STDIN_FILENO, &byte, 1)
+            guard count == 1 else { continue }
+            guard let key = Self.key(byte) else { continue }
+            handler(key)
+        }
+    }
+
+    /// Only the keys the harness acts on, and nothing else: a reader that forwarded everything
+    /// would be a keyboard logger, and this one is attached to whatever is typed into the terminal
+    /// for the length of a session.
+    private static func key(_ byte: UInt8) -> Key? {
+        switch byte {
+        case 0x0A, 0x0D: return .enter
+        case 0x1B: return .escape
+        case 0x7F, 0x08: return .backspace
+        case 0x03: return .interrupt
+        default:
+            guard let scalar = Unicode.Scalar(UInt32(byte)), scalar.isASCII else { return nil }
+            return .character(Character(scalar))
+        }
     }
 }
 

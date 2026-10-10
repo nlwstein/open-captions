@@ -113,6 +113,14 @@ public struct CaptionerStatus: Sendable {
     /// been heard.
     public var talkTime: [Int: Double] = [:]
 
+    /// How much of the last second each slot has been active, 0–1, indexed by slot.
+    ///
+    /// The diarizer's belief *right now*, as opposed to `talkTime`'s running total. The two answer
+    /// different questions and only this one explains a surprising colour while it is happening: a
+    /// steady total with a slot flickering here says the model is unsure this instant, which is
+    /// invisible in a transcript that has not been written yet.
+    public var slotActivity: [Double] = []
+
     /// Turns with more than one voice in them, and turns in total. The ratio is how much of this
     /// conversation no diarizer of this shape can be right about, and it is the number that decides
     /// how much the app should hedge.
@@ -284,6 +292,9 @@ public final class StreamingCaptioner: @unchecked Sendable {
             status.isSpeaking = meter.isSpeaking
             status.talkTime = Self.talkTime(of: built)
             status.contestedTurns = built.filter(\.isContested).count
+            status.slotActivity = Self.slotActivity(
+                segments: segments(), at: clock, slots: diarizer.timeline.speakerCapacity
+            )
 
             onUpdate(CaptionerUpdate(turns: built, status: status, audio: chunk, isFinal: false))
         }
@@ -403,6 +414,31 @@ public final class StreamingCaptioner: @unchecked Sendable {
 
     private func segments() -> [(speaker: Int, start: Double, end: Double)] {
         diarizerSegments().map { (speaker: $0.speaker, start: $0.start, end: $0.end) }
+    }
+
+    /// What fraction of the last `window` seconds each slot was active.
+    ///
+    /// A plain walk over the segments rather than the grid `overlapSeconds` builds: there are a few
+    /// hundred segments and four slots, so this is a few hundred comparisons per update, and it
+    /// stays correct while the segment list is being revised underneath it.
+    ///
+    /// Every slot gets an entry, including ones never heard — the display is a fixed four bars, and
+    /// a bar that vanishes reshuffles the others.
+    private static func slotActivity(
+        segments: [(speaker: Int, start: Double, end: Double)],
+        at moment: Double,
+        slots: Int,
+        window: Double = 1.0
+    ) -> [Double] {
+        guard moment > 0 else { return Array(repeating: 0, count: slots) }
+        let from = moment - window
+        var active = [Double](repeating: 0, count: slots)
+        for segment in segments {
+            let overlap = min(segment.end, moment) - max(segment.start, from)
+            guard overlap > 0, segment.speaker >= 0, segment.speaker < slots else { continue }
+            active[segment.speaker] += overlap
+        }
+        return active.map { min(1, $0 / window) }
     }
 
     /// The speaker covering this moment, or the nearest one when the diarizer has a hole.
