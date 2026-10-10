@@ -70,7 +70,12 @@ is also latched — it confirms once per session and then never again until `res
 confirmation callback hands back the *accumulated* transcript rather than the utterance. Both are
 workable, and both mean the turn-splitting logic stays ours, as it is now.
 
-## Speaker grouping: **the far-field failure was the default model, not far-field**
+## Speaker grouping: the default model was one failure; **the room is another**
+
+**On ten DiPCo dinner-party sessions — real people, a dining table, piped-in music, genuine overlap —
+one colour per speaker is right 36% of the time overall and about half the time on turns long enough
+to read, against 68–81% on the AMI meetings. The AMI number flattered the room.** Everything below
+the AMI results establishes that, and the short version is the tables at the end of this section.
 
 **Correction.** An earlier version of this section reported that LS-EEND groups a headset recording
 at 77% and a tabletop-array recording at 8%, and concluded that far-field diarization was the wall.
@@ -170,20 +175,110 @@ footgun below is the single most expensive thing in this document.
 document did, that far-field diarization does not work. It is worth checking whether the library's
 Swift API exposes the same default.
 
+### DiPCo: the same measurement at a dinner table, and it is much worse
+
+AMI is design meetings in an instrumented room. The app is for a family dinner in a home, so the
+question "does the room matter" is not academic. **DiPCo** is ten sessions of four Amazon volunteers
+around a dining table, recorded for Interspeech 2020 — a *simulated* dinner party (the corpus says
+so), but with a real dining table, real overlapping conversation, music piped into several sessions,
+and five seven-microphone devices around the room. It is a different room and a different kind of
+speech from AMI, and it is the closest public audio to this app's setting. Note that it is not
+literally a home: "in a home" would be a claim the corpus does not make. All ten sessions were
+scored the same way, `dihard3`, whole session, no window chosen:
+
+```bash
+Scripts/dipco-farfield-benchmark.sh S01 S02 S04 S07 S08 --device U01
+Scripts/dipco-farfield-benchmark.sh S03 S05 S06 S09 S10 --device U04
+```
+
+| | DiPCo — ten dinner-table sessions | AMI — two meetings |
+|---|---|---|
+| all turns | 2,709/7,078 — **38%** | 42% / 44% |
+| turns ≥ 2 s | **48%** | 68% / 81% |
+| one colour per speaker | **36%** | 39% / 44% |
+
+Per session, the ≥ 2 s figure ranges from **26% (S07) to 65% (S10)** — a factor of two and a half
+between two sessions of the same corpus. A single number is the wrong shape for this result; the
+spread is the result.
+
+| Turn length | DiPCo | AMI (EN2001a) |
+|---|---|---|
+| 0–0.5 s | 17/53 — 32% | 312/1109 — 28% |
+| 0.5–1 s | 591/2154 — 27% | 131/377 — 35% |
+| 1–2 s | 588/1796 — 33% | 149/290 — 51% |
+| 2–5 s | 807/1721 — 47% | 178/289 — 62% |
+| ≥ 5 s | 706/1354 — 52% | 208/278 — 75% |
+
+The gradient is in the same direction and much shallower. **And the AMI explanation does not apply
+here**: only 53 of DiPCo's 7,078 turns are shorter than the diarizer's 500 ms step, so almost nothing
+is being asked that the resolution forbids. The 38% is not a resolution artefact the way AMI's 42%
+partly was — it is the model, in that room.
+
+**A close-talk control says the loss is the room, not the pipeline and not the corpus.** The same
+conversation, same reference turns, same variant, run on a mix of the four participants' own
+close-talk headsets:
+
+| S02, dihard3 | flat | ≥ 2 s | clusters found |
+|---|---|---|---|
+| tabletop array (`U01.CH1`) | 204/448 — 46% | 138/231 — 60% | 5, three of them mapped to P08 |
+| **headsets (close-talk)** | **261/448 — 58%** | **158/231 — 68%** | **4 — a clean one-to-one** |
+
+That is the whole result in two rows. Given close-talk microphones the diarizer finds exactly the
+four people and assigns them one cluster each; the reference, the timestamps and the scoring are all
+sound. Put the same conversation through an array on the table and it invents a fifth cluster, maps
+three of them to one person, and drops twelve points. It also means DiPCo close-talk (68% at ≥ 2 s) lands where AMI's
+*array* lands (68–81%), so the AMI array was an unusually forgiving room rather than DiPCo being
+unusually hard.
+
+**Two mundane explanations were checked and ruled out.**
+
+- *The device choice is not the cause.* Five sessions ship `U01`–`U03` and five ship `U04`–`U05`,
+  never both — a corpus packaging quirk, not a scoring choice (the transcriptions carry all five
+  devices for all ten sessions). Re-running one session per family across every array it has moves
+  the result by a few points and never reorders anything: S02 scores 46/48/50% on `U01`/`U02`/`U03`,
+  S03 scores 34/36% on `U04`/`U05`.
+- *The timelines are not skewed.* The diarizer's segments span 88% (S01) and 84% (S04) of the time
+  the reference says someone was speaking, which is the right order for a model that merges short
+  backchannels into their neighbours. A misaligned timeline would read far lower, and the close-talk
+  control would not reach 68%. That said, **a sixth of the speech region has no cluster assigned at
+  all**, and every turn falling there scores as wrong by construction — worth knowing before reading
+  the 38% as pure confusion.
+
+**Overlap is real here and AMI barely has any** — measured as the share of speaking time with more
+than one voice active, DiPCo runs 11–37% (pooled 28%) against 5–8% in the two AMI meetings. It is the
+most likely single cause and it does not explain the spread on its own: S10 has 28% overlap and
+scores 65%, S07 has 33% and scores 26%. Depth and duration of overlap were not separated.
+
+**Speed is not the constraint.** All ten sessions — 320 minutes of audio — diarized in 132 seconds
+end to end, about **145× realtime**, consistent with AMI's 146–167×. The whole-corpus run costs less
+than a coffee.
+
+**What this means for the app, and it is not what the AMI numbers suggested.** A colour that is right
+half the time on the turns someone would read, and wrong the other half, is worse than no colour:
+the reader cannot tell which turns to distrust, and a caption aid for someone with cognitive decline
+must not invent structure. The AMI result ("seven to eight times in ten in the band that matters")
+supported shipping speaker colours. **The DiPCo result does not.** The honest options are to show
+speaker change without claiming identity — a break or a bullet rather than a name or a colour — or to
+treat diarization as the feature to get right before the UI, which is what the measurement now
+supports. Nothing here says the approach is hopeless; the close-talk row says the model is fine and
+the room is the problem, and room robustness is exactly what a phone on a table needs.
+
 ## What was not measured
 
 - **Nothing on a device.** All of this is an M2 Pro. The relative ordering should hold; the absolute
   real-time factors will not.
 - **No streaming test of Parakeet TDT.** The 0.009 figure is a full-file batch decode. Feeding it a
   live loop of sliding windows is a different measurement and it has not been run.
-- **Three meetings of 171, all AMI.** `ES2002a`, `EN2001a` and `TS3003a` cover two of the three
-  recording sites and both four- and five-speaker setups, and they agree with each other closely
-  enough to suggest the result is not a one-meeting fluke. AMI is still design meetings in
-  instrumented rooms, not a family dinner in a home.
-- **No meeting from another corpus.** AMI's `Array1-01` is a real tabletop array and the standard
-  far-field benchmark channel, but it is one room family. CHiME-6 (real dinner parties, OpenSLR
-  SLR150) and DiPCo (real dinner-table conversation) both fit the app's actual setting better and
-  neither has been run.
+- **Three meetings of 171, all AMI, plus all ten DiPCo sessions.** The AMI meetings cover two of the
+  three recording sites and both four- and five-speaker setups; DiPCo is ten homes. Nothing here is
+  a single-room fluke any more, and the DiPCo spread (26–65% at ≥ 2 s) is the honest error bar.
+- **No third corpus.** CHiME-6 (real dinner parties, OpenSLR SLR150) also fits the app's setting and
+  has not been run. Its value now is as a check on DiPCo's 48%, not as the first look at a home.
+- **No separation of what makes DiPCo hard.** Overlap, reverberation, background noise and moving
+  speakers all differ from AMI at once, and the close-talk control isolates "the room" without
+  saying which part of it. If this becomes the blocking feature, that is the next thing to pull
+  apart — anechoic-versus-reverberant and overlap-free-versus-overlapped subsets of the same
+  sessions would each be cheap to build.
 - **No published-number comparison.** Our metric is turn attribution, not DER, so these figures
   cannot be placed beside the AMI-SDM leaderboard without a conversion that has not been written.
 - **Only the default int8 encoder.** The CLI exposes `--encoder-precision int8-v2` and `--dual-decode-arbitration`;
@@ -227,6 +322,14 @@ for v in ami dihard3 callhome dihard2; do
     Fixtures/audio/ami-meeting-far.wav --variant "$v" > "/tmp/far-$v.log"
   uv run --no-project python -I Scripts/diarization_score.py ami-meeting-far "/tmp/far-$v.log"
 done
+
+# whole AMI meetings, no window chosen
+Scripts/ami-farfield-benchmark.sh EN2001a TS3003a --variant dihard3
+
+# the ten DiPCo dinner parties. 12.5 GB, fetched separately:
+#   hf download huckiyang/DiPCo --repo-type dataset --local-dir .corpora/dipco
+Scripts/dipco-farfield-benchmark.sh S01 S02 S04 S07 S08 --device U01
+Scripts/dipco-farfield-benchmark.sh S03 S05 S06 S09 S10 --device U04
 ```
 
 `score` exists for exactly this: it takes text some other process produced and puts it through the

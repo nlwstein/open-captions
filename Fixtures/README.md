@@ -118,6 +118,28 @@ to a 55.60–102.30 s window, downmixed to 16 kHz mono, peak-normalized as descr
 reference transcript was derived from the corpus word annotations for that window by
 `Scripts/ami_annotations.py`.
 
+### Attribution: DiPCo (not committed)
+
+The `Scripts/dipco-farfield-benchmark.sh` measurements in [ENGINES.md](../ENGINES.md) use a second
+corpus that is **not** part of this fixture set and is not in git — it is a 12.5 GB download into
+`.corpora/dipco`, which is gitignored. It is the **DiPCo Dinner Party Corpus** (Interspeech 2020),
+released under the
+[Community Data License Agreement – Permissive, Version 1.0](https://cdla.dev/permissive-1-0/).
+
+> Van Segbroeck, M., Zaid, A., Kutsenko, K., Huerta, C., Nguyen, T., Luo, X., Hoffmeister, B.,
+> Trmal, J., Omologo, M., & Maas, R. (2020). DiPCo — Dinner Party Corpus. *Proc. Interspeech 2020*.
+> <https://www.isca-speech.org/archive/interspeech_2020/segbroeck20_interspeech.html>
+
+Ten sessions of four participants around a dining table. Worth stating plainly because it is easy to
+overclaim: the corpus describes the sessions as a **simulated** dinner party run in a lab with
+Amazon volunteers and music piped in at fixed points, not recordings of real families at home. It is
+still far closer to the app's setting than a design meeting, which is why it is used.
+
+Changes made: none to the corpus files themselves. Turn timings and reference text are derived at
+run time from the corpus's own transcription JSON, per device, by `Scripts/dipco_annotations.py`;
+audio is decoded as shipped except where a control mix of the four close-talk channels is built with
+`ffmpeg`. Which device a session is scored on is a script argument, recorded in ENGINES.md.
+
 ## Regenerating
 
 ```bash

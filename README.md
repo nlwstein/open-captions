@@ -647,9 +647,12 @@ cannot tell who spoke — only that speech stopped and restarted. That is enough
 and costs a fraction of real diarization, which matters when this runs continuously on a phone.
 WhisperKit does ship `SpeakerKit` if real speaker labels are ever wanted — and Finding 14 measured
 that the cheap alternative does not work on real speech, so real diarization is not a nicety to reach
-for later. **A streaming one has now been measured and is viable:** Parakeet's LS-EEND gets 68–81% of
-two-second-plus turns right on complete far-field meetings, at 150× realtime — but only on its
-`dihard3` variant, which is not the default. See [ENGINES.md](ENGINES.md).
+for later. **A streaming one has now been measured, and it works in a meeting room but not yet in a
+home:** Parakeet's LS-EEND gets 68–81% of two-second-plus turns right on complete far-field AMI
+meetings, but **48%** on ten DiPCo dinner-table sessions — while the *same conversation* through the
+participants' close-talk headsets scores 68%. The room is the loss, not the model, and a phone on a
+table is the room. It is also only that good on its `dihard3` variant, which is not the default. See
+[ENGINES.md](ENGINES.md).
 
 **Word timings are required, not optional.** Without them a turn can only break at recognizer
 segment boundaries, and Whisper packs up to 30 seconds into one segment regardless of who was
@@ -706,9 +709,17 @@ reading "manager.").
   `ls_eend_ami`, which collapses to one cluster on far-field audio — 4% and 12% on those meetings,
   against `dihard3`'s 42% and 44% flat.** And a flat figure is the wrong figure: about half the
   turns in a real meeting are shorter than the diarizer's 500 ms step and cannot be resolved, which
-  is what drags the flat number down while the turns anyone would read score far higher. See
-  [ENGINES.md](ENGINES.md); `Scripts/diarization_score.py` and
-  `Scripts/ami-farfield-benchmark.sh` produce the numbers.
+  is what drags the flat number down while the turns anyone would read score far higher. **And the
+  68–81% is an AMI number.** On ten DiPCo dinner-table sessions it is **38% flat and 48% for turns
+  of two seconds or more**, ranging 26–65% between sessions, with only 53 of 7,078 turns shorter
+  than the diarizer's step — so unlike AMI, the flat figure is not a resolution artefact. There the
+  explanation is the room: the same conversation, same reference, same model, run on a mix of the
+  four close-talk headsets, finds exactly four clusters in a clean one-to-one and scores 58%/68%. A
+  colour that is right half the time on the turns someone would read is worse than no colour, so
+  **speaker identity is not shippable on the strength of the AMI result**, and the honest
+  alternatives are showing turn changes without claiming who, or treating diarization as the feature
+  to solve first. See [ENGINES.md](ENGINES.md); `Scripts/diarization_score.py`,
+  `Scripts/ami-farfield-benchmark.sh` and `Scripts/dipco-farfield-benchmark.sh` produce the numbers.
 - **Only `small` has been run live on speech.** `base` and `large-v3-turbo` have now been through the
   loop on non-speech (Finding 12), but neither has captioned a fixture: `base` was measured offline
   only, and turbo cannot keep up. Whether an intermediate model is the better trade — turbo's
