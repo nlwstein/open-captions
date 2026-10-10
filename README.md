@@ -647,8 +647,8 @@ cannot tell who spoke — only that speech stopped and restarted. That is enough
 and costs a fraction of real diarization, which matters when this runs continuously on a phone.
 WhisperKit does ship `SpeakerKit` if real speaker labels are ever wanted — and Finding 14 measured
 that the cheap alternative does not work on real speech, so real diarization is not a nicety to reach
-for later. **A streaming one has now been measured, and it is cheap enough to be viable:** Parakeet's
-LS-EEND labels 69% of turns correctly on both the headset and the far-field fixture — but only on its
+for later. **A streaming one has now been measured and is viable:** Parakeet's LS-EEND gets 68–81% of
+two-second-plus turns right on complete far-field meetings, at 150× realtime — but only on its
 `dihard3` variant, which is not the default. See [ENGINES.md](ENGINES.md).
 
 **Word timings are required, not optional.** Without them a turn can only break at recognizer
@@ -700,13 +700,15 @@ reading "manager.").
   so a hand-rolled streaming wrapper on top of them is not available either. **A different engine is
   the alternative, and it has now been measured — see [ENGINES.md](ENGINES.md).** Parakeet's 0.6B TDT
   model runs this fixture set at a real-time factor of 0.009, and its streaming LS-EEND diarizer
-  labels 69% of turns correctly on the far-field fixture at 167× realtime. Speaker grouping now has
-  a measurement rather than an assumption, and the measurement is that it works — with one caveat
-  that cost real time to find: **LS-EEND defaults to `ls_eend_ami`, which scores 77% on headsets and
-  8% on a tabletop array, while `dihard3` scores 69% on both.** A far-field failure reported here
-  earlier was the default variant, not far-field audio. See [ENGINES.md](ENGINES.md).
-  `Scripts/diarization_score.py` produces the numbers; the annotations it scores against are the
-  ones Finding 14 needed.
+  labels turns correctly at **68–81% for turns of two seconds or more**, far-field, at 150× realtime
+  across two complete real meetings. Speaker grouping has a measurement rather than an assumption,
+  and it comes with two caveats that each cost real time to find. **LS-EEND defaults to
+  `ls_eend_ami`, which collapses to one cluster on far-field audio — 4% and 12% on those meetings,
+  against `dihard3`'s 42% and 44% flat.** And a flat figure is the wrong figure: about half the
+  turns in a real meeting are shorter than the diarizer's 500 ms step and cannot be resolved, which
+  is what drags the flat number down while the turns anyone would read score far higher. See
+  [ENGINES.md](ENGINES.md); `Scripts/diarization_score.py` and
+  `Scripts/ami-farfield-benchmark.sh` produce the numbers.
 - **Only `small` has been run live on speech.** `base` and `large-v3-turbo` have now been through the
   loop on non-speech (Finding 12), but neither has captioned a fixture: `base` was measured offline
   only, and turbo cannot keep up. Whether an intermediate model is the better trade — turbo's

@@ -12,30 +12,32 @@ in the same order by construction, which `speaker_annotations.py --check` enforc
 
 Accuracy is reported after the best possible relabelling of the diarizer's speakers. Diarizers emit
 arbitrary cluster ids (`Speaker 0`, `SPEAKER_01`) with no relationship to the truth labels, so
-comparing them directly would measure nothing. Choosing the best of the 24 possible mappings for a
-4-speaker fixture is the standard fix and it is generous to the diarizer on purpose: the number this
-produces is an upper bound on what a perfect label assignment could achieve.
+comparing them directly would measure nothing. Each cluster is assigned the truth label it dominates
+most often — chosen once per file, never per turn, because a per-turn best mapping would score 100%
+for any diarizer that found the right number of clusters, which is the failure mode this script
+exists to avoid. The number is therefore an upper bound on what a perfect label assignment achieves.
 
-The mapping is chosen once per fixture over the whole file, not per turn. A per-turn best mapping
-would score 100% for any diarizer that found the right number of clusters, which is the failure mode
-this script exists to avoid.
+The headline figure is deliberately followed by a breakdown by turn length. On a 47-second clip
+almost every turn is long enough to be a fair question; on a real 25-minute meeting about half are
+shorter than half a second, which is the diarizer's own step size. A single number over both would
+read as model error when much of it is resolution.
 
 Usage:
-  uv run -I Scripts/diarization_score.py <truth-fixture> <diarizer-output.txt> [--fixture-window]
+  uv run -I Scripts/diarization_score.py <truth-fixture> <diarizer-output.txt> [--turns PATH]
 
   The diarizer output is the text form printed by FluidAudio's `lseend` command:
       Speaker 0: 0.10s - 21.80s (21.70s)
-  and `--fixture-window` is only needed if the file carries corpus-time stamps rather than times
-  relative to the clip (FluidAudio's output is already clip-relative, so the default is 0.0).
+
+  `--turns` points at a `turns.txt` from `ami_annotations.py turns`; defaults to the committed AMI
+  build output. `--clip-start` is only needed for a clip cut from a longer recording, and should be
+  0 for a whole-meeting score. `--table` prints every turn.
 """
 
 from __future__ import annotations
 
 import argparse
-import itertools
 import pathlib
 import re
-import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BUILD = ROOT / ".fixture-build"
@@ -45,30 +47,39 @@ SEGMENT = re.compile(
 )
 
 
-def load_truth(fixture: str) -> list[tuple[float, float, str]]:
-    """(start, end, speaker) per reference line, in clip-relative seconds."""
+def load_truth(
+    fixture: str, turns_path: pathlib.Path, offset: float
+) -> list[tuple[float, float, str]]:
+    """(start, end, speaker) per reference line, in clip-relative seconds.
+
+    Labels come from `Fixtures/annotations/<fixture>.txt` when that exists, because the committed
+    reference is plain text with no second column. For a whole meeting scored straight from the
+    corpus there is no such file and none is needed: `turns.txt` carries the speaker in its own
+    third column, which is where the annotation file got it in the first place.
+    """
     annotations = ROOT / "Fixtures" / "annotations" / f"{fixture}.txt"
-    turns_file = BUILD / "ami" / "turns.txt"
-    if not annotations.exists():
-        raise SystemExit(f"no annotations for {fixture} at {annotations}")
+    turns_file = turns_path
     if not turns_file.exists():
         raise SystemExit(
-            f"no turn timings at {turns_file} — they are written by Scripts/make-ami-fixtures.sh, "
-            "which must be re-run to regenerate the build directory"
+            f"no turn timings at {turns_file} — they are written by Scripts/make-ami-fixtures.sh "
+            "(or `ami_annotations.py turns` for another meeting), which must be run first"
         )
 
-    labels = [line.strip() for line in annotations.read_text().splitlines() if line.strip()]
     rows = [row for row in turns_file.read_text().splitlines() if row.strip()]
     # Only rows with a speaker survive into the reference file, so the filter must match the one
     # speaker_annotations.py applied or the two lists drift apart silently.
     timed = [row.split("|") for row in rows if len(row.split("|")) >= 4 and row.split("|")[3].strip()]
-    if len(labels) != len(timed):
-        raise SystemExit(
-            f"{fixture}: {len(labels)} annotations vs {len(timed)} timed turns — "
-            "the two are out of step; re-run Scripts/speaker_annotations.py"
-        )
 
-    offset = clip_start()
+    if annotations.exists():
+        labels = [line.strip() for line in annotations.read_text().splitlines() if line.strip()]
+        if len(labels) != len(timed):
+            raise SystemExit(
+                f"{fixture}: {len(labels)} annotations vs {len(timed)} timed turns — "
+                "the two are out of step; re-run Scripts/speaker_annotations.py"
+            )
+    else:
+        labels = [parts[2] for parts in timed]
+
     return [
         (float(parts[0]) - offset, float(parts[1]) - offset, label)
         for parts, label in zip(timed, labels)
@@ -101,18 +112,11 @@ def overlap(a: tuple[float, float], b: tuple[float, float]) -> float:
     return max(0.0, min(a[1], b[1]) - max(a[0], b[0]))
 
 
-def best_mapping(
+def dominant_per_turn(
     truth: list[tuple[float, float, str]], prediction: list[tuple[str, float, float]]
-) -> tuple[dict[str, str], int, int]:
-    """The relabelling of predicted speakers that agrees with the truth on the most turns.
-
-    Ties are broken toward the mapping that also maximises total overlapping time, so a diarizer
-    that gets the boundaries right is preferred over one that merely stumbled onto the right counts.
-    """
+) -> list[tuple[str | None, float]]:
+    """For each truth turn: the predicted speaker covering most of it, and how much it covered."""
     predicted_speakers = sorted({s for s, _, _ in prediction})
-    truth_speakers = sorted({t for _, _, t in truth})
-
-    # Dominant predicted speaker per truth turn, and how much of the turn it covers.
     dominant: list[tuple[str | None, float]] = []
     for start, end, _ in truth:
         totals = {s: 0.0 for s in predicted_speakers}
@@ -123,33 +127,73 @@ def best_mapping(
         else:
             winner = max(totals, key=lambda s: totals[s])
             dominant.append((winner, totals[winner]))
+    return dominant
 
-    best = (0, 0.0, {})
-    # Only 24 permutations for four speakers; brute force is clearer than anything clever.
-    for combo in itertools.permutations(truth_speakers, len(predicted_speakers)):
-        mapping = dict(zip(predicted_speakers, combo))
-        hits = sum(
-            1
-            for (speaker, _), (_, _, label) in zip(dominant, truth)
-            if speaker is not None and mapping[speaker] == label
-        )
-        covered = sum(
-            weight
-            for (speaker, weight), (_, _, label) in zip(dominant, truth)
-            if speaker is not None and mapping[speaker] == label
-        )
-        if (hits, covered) > (best[0], best[1]):
-            best = (hits, covered, mapping)
-    return best[2], best[0], len(truth)
+
+def best_mapping(
+    truth: list[tuple[float, float, str]], prediction: list[tuple[str, float, float]]
+) -> tuple[dict[str, str], int, int]:
+    """The relabelling of predicted speakers that agrees with the truth on the most turns.
+
+    Each predicted speaker is assigned the truth label it dominates most often, chosen
+    independently. Independence is what makes this exactly optimal rather than a heuristic: with a
+    many-to-one mapping, one predicted speaker's label cannot affect another's score, because a turn
+    is only ever counted against the single predicted speaker that dominates it.
+
+    Many-to-one rather than a bijection, because a diarizer that splits one person across two
+    clusters is a real and common failure, and the question here is only whether a turn would get
+    the right colour. Ties on turn count are broken toward the assignment that also covers more
+    overlapping time, so a diarizer with correct boundaries beats one that stumbled onto the counts.
+    """
+    dominant = dominant_per_turn(truth, prediction)
+
+    tally: dict[str, dict[str, list[float]]] = {}
+    for (speaker, weight), (_, _, label) in zip(dominant, truth):
+        if speaker is None:
+            continue
+        entry = tally.setdefault(speaker, {}).setdefault(label, [0, 0.0])
+        entry[0] += 1
+        entry[1] += weight
+
+    mapping = {
+        speaker: max(counts.items(), key=lambda kv: (kv[1][0], kv[1][1]))[0]
+        for speaker, counts in tally.items()
+    }
+    hits = sum(
+        1
+        for (speaker, _), (_, _, label) in zip(dominant, truth)
+        if speaker is not None and mapping[speaker] == label
+    )
+    return mapping, hits, len(truth)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("fixture", help="Fixture name, e.g. ami-meeting.")
     parser.add_argument("prediction", type=pathlib.Path, help="Diarizer output to score.")
+    parser.add_argument(
+        "--turns",
+        type=pathlib.Path,
+        default=BUILD / "ami" / "turns.txt",
+        help="Turn timings for the fixture. Defaults to the committed AMI build output.",
+    )
+    parser.add_argument(
+        "--clip-start",
+        type=float,
+        default=None,
+        help="Corpus time the clip begins at, for fixtures cut from a longer recording. "
+        "Defaults to CLIP_START in Scripts/make-ami-fixtures.sh.",
+    )
+    parser.add_argument(
+        "--table",
+        action="store_true",
+        help="Print every turn. Off by default: a full meeting has thousands, and the "
+        "duration breakdown above carries the finding.",
+    )
     args = parser.parse_args()
 
-    truth = load_truth(args.fixture)
+    offset = args.clip_start if args.clip_start is not None else clip_start()
+    truth = load_truth(args.fixture, args.turns, offset)
     prediction = load_prediction(args.prediction)
     mapping, hits, total = best_mapping(truth, prediction)
 
@@ -158,15 +202,40 @@ def main() -> int:
           f"truth has {len({t for _, _, t in truth})}")
     print(f"  best mapping: " + ", ".join(f"{k}→{v}" for k, v in sorted(mapping.items())))
 
-    print(f"\n  {'truth':>5}  {'time':>14}  {'predicted':>9}  {'as':>4}")
-    for (start, end, label) in truth:
+    # Per-turn outcome, computed once and used for both the breakdown and the table.
+    rows = []
+    for start, end, label in truth:
         totals: dict[str, float] = {}
         for speaker, pstart, pend in prediction:
             totals[speaker] = totals.get(speaker, 0.0) + overlap((start, end), (pstart, pend))
         winner = max(totals, key=lambda s: totals[s]) if totals and max(totals.values()) > 0 else None
         mapped = mapping.get(winner, "—") if winner else "—"
-        mark = "  " if mapped == label else " ✗"
-        print(f"  {label:>5}  {start:6.2f}–{end:6.2f}  {str(winner):>9}  {mapped:>4}{mark}")
+        rows.append((label, winner, mapped, end - start))
+
+    # A flat accuracy figure is misleading on a real meeting, where most turns are shorter than the
+    # diarizer's own step size and cannot be resolved by construction. Reporting the split is what
+    # separates "the model is wrong" from "the question was unanswerable at this resolution".
+    print("\n  by turn length")
+    previous = 0.0
+    for edge in (0.5, 1.0, 2.0, 5.0, None):
+        if edge is None:
+            selected = [r for r in rows if r[3] >= previous]
+            label = f"  ≥{previous:>4.1f}s"
+        else:
+            selected = [r for r in rows if previous <= r[3] < edge]
+            label = f"{previous:>4.1f}–{edge:<4.1f}s"
+        if selected:
+            right = sum(1 for r in selected if r[2] == r[0])
+            print(f"    {label}  {right:5d}/{len(selected):<5d} {100 * right / len(selected):5.0f}%")
+        if edge is None:
+            break
+        previous = edge
+
+    if args.table:
+        print(f"\n  {'truth':>5}  {'time':>14}  {'predicted':>9}  {'as':>4}")
+        for (start, end, label), (_, winner, mapped, _) in zip(truth, rows):
+            mark = "  " if mapped == label else " ✗"
+            print(f"  {label:>5}  {start:6.2f}–{end:6.2f}  {str(winner):>9}  {mapped:>4}{mark}")
     return 0
 
 

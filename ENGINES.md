@@ -117,6 +117,54 @@ pick, and it means the number is a property of the model and the room rather tha
 **Speed is not a consideration either way** — 167× realtime on the headset fixture, 146–166× across
 all variants and channels. Diarization is free at this scale.
 
+### The 69% does not survive whole meetings — and the reason matters more than the number
+
+Thirteen turns in a hand-cut 47-second window cannot support a percentage, and picking the window is
+a judgement call that can flatter whichever model is being measured. So the same question was asked
+of **two complete meetings**, scored turn by turn against the corpus's own annotations — 2,343 turns
+in one, 382 in the other, no window chosen at all:
+
+```bash
+Scripts/ami-farfield-benchmark.sh EN2001a TS3003a --variant dihard3
+```
+
+| | EN2001a — 87 min, 5 speakers | TS3003a — 25 min, 4 speakers |
+|---|---|---|
+| all turns | 978/2343 — **42%** | 167/382 — **44%** |
+| turns ≥ 2 s | 386/567 — **68%** | 85/105 — **81%** |
+| turns ≥ 5 s | 208/278 — 75% | 41/46 — 89% |
+
+The flat figure is nearly twenty points below the window's 69%, and the obvious reading — far-field
+diarization is worse than we thought — is the wrong one. **About half the turns in a real meeting are
+shorter than half a second**, which is the diarizer's own step size, so it cannot resolve them by
+construction. Accuracy rises monotonically with turn length in both meetings:
+
+| Turn length | EN2001a | TS3003a |
+|---|---|---|
+| 0–0.5 s | 312/1109 — 28% | 31/146 — 21% |
+| 0.5–1 s | 131/377 — 35% | 24/74 — 32% |
+| 1–2 s | 149/290 — 51% | 27/57 — 47% |
+| 2–5 s | 178/289 — 62% | 44/59 — 75% |
+| ≥ 5 s | 208/278 — 75% | 41/46 — 89% |
+
+That also reconciles the window with the meetings, which is the part worth keeping: **the 47-second
+clip was never lucky.** Its thirteen turns are all long, so it measured the ≥ 2 s band and got 69%
+— squarely between the 68% and 81% those meetings show for the same band. The window and the full
+meetings agree. Only the flat average disagrees, and it disagrees because it is averaging in 1,109
+turns of "Mm-hmm."
+
+**What this means for the app is better than the headline suggests.** A caption aid colours turns
+someone is going to read; the sub-half-second backchannels are not those turns. In the band that
+matters the diarizer is right roughly seven to eight times in ten, on real meetings, far-field, at
+150× realtime. The failure it does have is the one to expect from a 500 ms step: it merges a quick
+"Mm-hmm" into the long turn around it, which loses a colour nobody needed.
+
+**The default variant's collapse is confirmed at meeting scale, and it is not a window artefact
+either.** On the same two meetings, `ami` scores **4%** (94/2343, finding 1 cluster where there are
+5) and **12%** (47/382, 1 where there are 4). Every length band is flat near zero, which is what a
+model that has stopped discriminating looks like — as opposed to `dihard3`'s clean gradient. The
+footgun below is the single most expensive thing in this document.
+
 **A footgun worth carrying forward:** the default variant is the one that fails. Anyone who runs
 `fluidaudiocli lseend` without `--variant` and tests on distant microphones will conclude, as this
 document did, that far-field diarization does not work. It is worth checking whether the library's
@@ -128,9 +176,16 @@ Swift API exposes the same default.
   real-time factors will not.
 - **No streaming test of Parakeet TDT.** The 0.009 figure is a full-file batch decode. Feeding it a
   live loop of sliding windows is a different measurement and it has not been run.
-- **One meeting, one 47-second window.** Every diarization number above comes from `ES2002a`. The
-  array-summing result says the channel is not the variable, but it does not say this meeting is
-  representative of AMI or of a family dinner.
+- **Three meetings of 171, all AMI.** `ES2002a`, `EN2001a` and `TS3003a` cover two of the three
+  recording sites and both four- and five-speaker setups, and they agree with each other closely
+  enough to suggest the result is not a one-meeting fluke. AMI is still design meetings in
+  instrumented rooms, not a family dinner in a home.
+- **No meeting from another corpus.** AMI's `Array1-01` is a real tabletop array and the standard
+  far-field benchmark channel, but it is one room family. CHiME-6 (real dinner parties, OpenSLR
+  SLR150) and DiPCo (real dinner-table conversation) both fit the app's actual setting better and
+  neither has been run.
+- **No published-number comparison.** Our metric is turn attribution, not DER, so these figures
+  cannot be placed beside the AMI-SDM leaderboard without a conversion that has not been written.
 - **Only the default int8 encoder.** The CLI exposes `--encoder-precision int8-v2` and `--dual-decode-arbitration`;
   neither was tried.
 - **No word→speaker attribution.** Neither package provides it end to end; Parakeet exposes per-token
