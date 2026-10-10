@@ -19,8 +19,55 @@ public struct StreamedTurn: Sendable, Equatable {
     public var text: String
     public var start: Double
     public var end: Double
+
     /// True for the turn still being spoken, which the renderer is allowed to rewrite.
     public var isOpen: Bool
+
+    /// Seconds of this turn in which more than one slot was active — two people talking at once,
+    /// and therefore a colour that is a coin toss.
+    ///
+    /// Seconds rather than a fraction of the turn, because a fraction makes the same doubt read
+    /// differently depending on how long someone talked: half a second of crosstalk is the same
+    /// fact inside a one-second turn and inside a ten-second one, and only the second is diluted
+    /// below a threshold by the fraction. It was a fraction first, and on real audio it marked
+    /// nothing at all.
+    ///
+    /// This is not an error to fix. A single-stream diarizer's output cannot carry two speakers at
+    /// once, so on contested audio *every* answer is wrong for part of the turn; the failure is
+    /// claiming otherwise. What can be fixed is the confidence: the app can show that two voices
+    /// were in the room rather than pick one and say nothing.
+    ///
+    /// Small in practice. Sortformer's streaming output marks simultaneous activity in about 2% of
+    /// a DiPCo session, against 7% offline with identical thresholds — the same model with a
+    /// bounded left context is markedly more decisive about who is speaking, and mostly wrong to
+    /// be so. So this fires rarely, and is worth heeding when it does.
+    public var overlapSeconds: Double = 0
+
+    /// Whether enough of this turn was crosstalk to be worth telling the reader about.
+    public var isContested: Bool { overlapSeconds >= StreamedTurn.contestedThreshold }
+
+    /// Four frames at the diarizer's 80 ms. Below this it is a single frame's disagreement — the
+    /// model moving a slot across its 0.5 threshold for an instant — and marking it would put a
+    /// caveat on turns where nothing audible happened. Every overlapping frame here is real: the
+    /// streaming timeline applies no padding, so two slots are only ever active at once because
+    /// the model put both over threshold on the same frame.
+    public static let contestedThreshold = 0.3
+}
+
+/// One stretch of speech the diarizer currently attributes to one slot.
+///
+/// The raw material every colour is derived from, exposed because "why was that word that colour?"
+/// is the first question any smoke test asks and there is no way to answer it from the transcript.
+/// Segments are revised as they finalize, so a dump taken mid-session is a snapshot of belief
+/// rather than a settled answer.
+public struct DiarizerSegmentInfo: Sendable, Equatable {
+    public var speaker: Int
+    public var start: Double
+    public var end: Double
+
+    /// False while the diarizer is still willing to revise this segment. The newest words in a
+    /// transcript sit in tentative segments, which is why they are coloured at all.
+    public var isFinal: Bool
 }
 
 /// A snapshot of how the engine is doing, alongside the words it has produced.
@@ -65,6 +112,11 @@ public struct CaptionerStatus: Sendable {
     /// Seconds attributed to each Sortformer slot. A slot missing from this is one that has never
     /// been heard.
     public var talkTime: [Int: Double] = [:]
+
+    /// Turns with more than one voice in them, and turns in total. The ratio is how much of this
+    /// conversation no diarizer of this shape can be right about, and it is the number that decides
+    /// how much the app should hedge.
+    public var contestedTurns: Int = 0
 
     /// Total length, when the source is a file. Nil for a microphone.
     public var sourceDuration: Double?
@@ -231,6 +283,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
             status.normalizedLevel = meter.normalizedLevel
             status.isSpeaking = meter.isSpeaking
             status.talkTime = Self.talkTime(of: built)
+            status.contestedTurns = built.filter(\.isContested).count
 
             onUpdate(CaptionerUpdate(turns: built, status: status, audio: chunk, isFinal: false))
         }
@@ -247,6 +300,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
         status.words = words.count
         status.turns = built.count
         status.talkTime = Self.talkTime(of: built)
+        status.contestedTurns = built.filter(\.isContested).count
         onUpdate(CaptionerUpdate(turns: built, status: status, audio: [], isFinal: true))
     }
 
@@ -324,15 +378,31 @@ public final class StreamingCaptioner: @unchecked Sendable {
     /// Tentative segments are included on purpose. Keeping them out would leave the newest words —
     /// the ones someone is reading right now — permanently uncoloured, which reads as the app
     /// having stopped working. They are allowed to be wrong and to be revised.
-    private func segments() -> [(speaker: Int, start: Double, end: Double)] {
-        var out: [(speaker: Int, start: Double, end: Double)] = []
+    public func diarizerSegments() -> [DiarizerSegmentInfo] {
+        var out: [DiarizerSegmentInfo] = []
         for (_, speaker) in diarizer.timeline.speakers {
-            for segment in speaker.finalizedSegments + speaker.tentativeSegments {
-                let frame = Double(segment.frameDurationSeconds)
-                out.append((segment.speakerIndex, Double(segment.startFrame) * frame, Double(segment.endFrame) * frame))
+            for segment in speaker.finalizedSegments {
+                out.append(Self.info(segment, isFinal: true))
+            }
+            for segment in speaker.tentativeSegments {
+                out.append(Self.info(segment, isFinal: false))
             }
         }
         return out.sorted { $0.start < $1.start }
+    }
+
+    private static func info(_ segment: DiarizerSegment, isFinal: Bool) -> DiarizerSegmentInfo {
+        let frame = Double(segment.frameDurationSeconds)
+        return DiarizerSegmentInfo(
+            speaker: segment.speakerIndex,
+            start: Double(segment.startFrame) * frame,
+            end: Double(segment.endFrame) * frame,
+            isFinal: isFinal
+        )
+    }
+
+    private func segments() -> [(speaker: Int, start: Double, end: Double)] {
+        diarizerSegments().map { (speaker: $0.speaker, start: $0.start, end: $0.end) }
     }
 
     /// The speaker covering this moment, or the nearest one when the diarizer has a hole.
@@ -348,6 +418,48 @@ public final class StreamingCaptioner: @unchecked Sendable {
             min(abs(moment - $0.start), abs(moment - $0.end)) < min(abs(moment - $1.start), abs(moment - $1.end))
         }) else { return nil }
         return nearest.speaker
+    }
+
+    /// Seconds of each turn in which more than one slot was active.
+    ///
+    /// Computed on a coarse time grid rather than by intersecting every turn with every segment: the
+    /// segment list grows all session, and this runs ten times a second, so the grid is built once
+    /// per update and every turn is then a range sum over it. A hundred-millisecond step is well
+    /// below the diarizer's own ~500 ms resolution, so nothing is lost by it.
+    private static func overlapSeconds(
+        _ turns: [StreamedTurn],
+        segments: [(speaker: Int, start: Double, end: Double)],
+        step: Double = 0.1
+    ) -> [Double] {
+        guard let last = turns.last, !segments.isEmpty, last.end > 0 else {
+            return Array(repeating: 0, count: turns.count)
+        }
+
+        let count = Int(last.end / step) + 2
+        var active = [UInt8](repeating: 0, count: count)
+        for segment in segments {
+            var index = max(0, Int(segment.start / step))
+            let end = min(count - 1, Int(segment.end / step))
+            while index <= end {
+                // Saturating, because a fifth concurrent voice cannot exist with four slots and a
+                // wrap would turn a crowded moment into an empty one.
+                active[index] = min(255, active[index] + 1)
+                index += 1
+            }
+        }
+
+        // A running total, so each turn costs two lookups instead of a walk over its own span.
+        var cumulative = [Int](repeating: 0, count: count + 1)
+        for index in 0..<count {
+            cumulative[index + 1] = cumulative[index] + (active[index] > 1 ? 1 : 0)
+        }
+
+        return turns.map { turn in
+            let start = max(0, Int(turn.start / step))
+            let end = min(count, Int(turn.end / step))
+            guard end > start else { return 0 }
+            return Double(cumulative[end] - cumulative[start]) * step
+        }
     }
 
     // MARK: - Turns
@@ -410,6 +522,13 @@ public final class StreamingCaptioner: @unchecked Sendable {
                     )
                 )
             }
+        }
+
+        // Overlap last, because it is a property of the finished span rather than of any word, and
+        // because the smoothing above has already moved words between turns.
+        let overlaps = Self.overlapSeconds(built, segments: segments)
+        for index in built.indices {
+            built[index].overlapSeconds = overlaps[index]
         }
 
         if open, var last = built.last {

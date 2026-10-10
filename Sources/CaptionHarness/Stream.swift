@@ -69,6 +69,17 @@ struct Stream: AsyncParsableCommand {
     )
     var record: String?
 
+    @Option(
+        name: .long,
+        help: """
+        Write the whole session to this .json when it ends: every turn with its speaker, times and \
+        overlap, and every raw diarizer segment behind them. This is what turns "the colours were \
+        wrong there" into something that can be looked at, because the transcript alone cannot say \
+        whether a bad colour came from a bad speaker decision or from a word landing in a gap.
+        """
+    )
+    var dump: String?
+
     @Flag(name: .long, help: "Print turns as they close, no redrawing — for piping to a file.")
     var plain: Bool = false
 
@@ -139,6 +150,17 @@ struct Stream: AsyncParsableCommand {
             try recorder.finish()
             renderer.note("wrote \(recorder.url.path)")
         }
+        if let dump {
+            let url = URL(fileURLWithPath: (dump as NSString).expandingTildeInPath)
+            try SessionDump(
+                turns: session.turns,
+                segments: captioner.diarizerSegments(),
+                status: session.status,
+                settings: settings(options),
+                source: source.origin()
+            ).write(to: url)
+            renderer.note("wrote \(url.path)")
+        }
         if !plain { renderer.finish(turns: session.turns) }
     }
 
@@ -168,6 +190,7 @@ private final class Session: @unchecked Sendable {
     private let recorder: SessionRecorder?
     private let renderer: StreamRenderer
     private var latest: [StreamedTurn] = []
+    private var latestStatus = CaptionerStatus()
 
     init(recorder: SessionRecorder?, renderer: StreamRenderer) {
         self.recorder = recorder
@@ -177,10 +200,17 @@ private final class Session: @unchecked Sendable {
     func receive(_ update: CaptionerUpdate) {
         lock.lock()
         latest = update.turns
+        latestStatus = update.status
         lock.unlock()
 
         recorder?.append(update.audio)
         renderer.update(update)
+    }
+
+    var status: CaptionerStatus {
+        lock.lock()
+        defer { lock.unlock() }
+        return latestStatus
     }
 
     var turns: [StreamedTurn] {
@@ -265,6 +295,100 @@ final class SessionRecorder {
 
     private static func littleEndian(_ value: UInt16) -> Data {
         withUnsafeBytes(of: value.littleEndian) { Data($0) }
+    }
+}
+
+/// The whole session as one JSON document: what was drawn, and the diarizer segments it was drawn
+/// from.
+///
+/// Both halves matter, and neither is enough alone. The turns say what the reader saw; the segments
+/// say what the engine believed. A colour that looks wrong is either a word landing in a segment
+/// that was itself wrong, or two segments genuinely overlapping there — and those need opposite
+/// fixes, which cannot be told apart from the transcript.
+///
+/// Hand-rolled rather than `Codable`, and for the same reason the rest of this file is: the shape
+/// is a debugging artifact, and a struct that quietly changes shape when a field is renamed would
+/// break the only consumer of it.
+struct SessionDump {
+
+    var turns: [StreamedTurn]
+    var segments: [DiarizerSegmentInfo]
+    var status: CaptionerStatus
+    var settings: String
+    var source: AudioOrigin
+
+    func write(to url: URL) throws {
+        try Data(json().utf8).write(to: url)
+    }
+
+    func json() -> String {
+        var out = "{\n"
+
+        out += "  \"settings\": \(Self.string(settings)),\n"
+        out += "  \"source\": {\"kind\": \(Self.string(source.kind.rawValue)), "
+        out += "\"name\": \(Self.string(source.name)), "
+        out += "\"duration\": \(Self.number(source.duration))},\n"
+        out += "  \"audioSeconds\": \(Self.number(status.audioSeconds)),\n"
+        out += "  \"wallSeconds\": \(Self.number(status.wallSeconds)),\n"
+        out += "  \"processingLoad\": \(Self.number(status.processingLoad)),\n"
+        out += "  \"slowestUpdateSeconds\": \(Self.number(status.slowestUpdateSeconds)),\n"
+        out += "  \"words\": \(status.words),\n"
+        out += "  \"contestedTurns\": \(status.contestedTurns),\n"
+
+        out += "  \"speechSeconds\": {"
+        out += status.speakers
+            .map { "\(Self.string(String($0))): \(Self.number(status.talkTime[$0] ?? 0))" }
+            .joined(separator: ", ")
+        out += "},\n"
+
+        out += "  \"segments\": [\n"
+        out += segments.map { segment in
+            "    {\"speaker\": \(segment.speaker), \"start\": \(Self.number(segment.start)), "
+                + "\"end\": \(Self.number(segment.end)), \"final\": \(segment.isFinal)}"
+        }.joined(separator: ",\n")
+        out += "\n  ],\n"
+
+        out += "  \"turns\": [\n"
+        out += turns.map { turn in
+            "    {\"speaker\": \(turn.speaker.map(String.init) ?? "null"), "
+                + "\"start\": \(Self.number(turn.start)), \"end\": \(Self.number(turn.end)), "
+                + "\"overlapSeconds\": \(Self.number(turn.overlapSeconds)), "
+                + "\"open\": \(turn.isOpen), \"text\": \(Self.string(turn.text))}"
+        }.joined(separator: ",\n")
+        out += "\n  ]\n}\n"
+
+        return out
+    }
+
+    private static func number(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "null" }
+        return String(format: "%.4f", value)
+    }
+
+    private static func number(_ value: Double) -> String {
+        value.isFinite ? String(format: "%.4f", value) : "null"
+    }
+
+    /// Escapes the two characters that appear in a transcript often enough to matter — quote and
+    /// backslash — plus a slash for the paths. Emoji and accents are valid UTF-8 JSON as they are.
+    private static func string(_ value: String) -> String {
+        var out = "\""
+        for character in value.unicodeScalars {
+            switch character {
+            case "\"": out += "\\\""
+            case "\\": out += "\\\\"
+            case "\n": out += "\\n"
+            case "\t": out += "\\t"
+            case "\r": out += "\\r"
+            default:
+                if character.value < 0x20 {
+                    out += String(format: "\\u%04x", character.value)
+                } else {
+                    out.unicodeScalars.append(character)
+                }
+            }
+        }
+        return out + "\""
     }
 }
 
@@ -389,8 +513,8 @@ private final class StreamRenderer: @unchecked Sendable {
         print("Transcript — \(options)")
         print(String(repeating: "─", count: 72))
         for turn in turns {
-            let label = turn.speaker.map { "Speaker \($0 + 1)" } ?? "—"
-            print("\(String(format: "%6.1fs", turn.start))  \(label.padding(toLength: 10, withPad: " ", startingAt: 0)) \(turn.text)")
+            let label = Self.label(turn).padding(toLength: 11, withPad: " ", startingAt: 0)
+            print("\(String(format: "%6.1fs", turn.start))  \(label) \(turn.text)")
         }
         print("")
     }
@@ -402,8 +526,7 @@ private final class StreamRenderer: @unchecked Sendable {
             let closed = update.turns.filter { !$0.isOpen }
             while printed < closed.count {
                 let turn = closed[printed]
-                let label = turn.speaker.map { "Speaker \($0 + 1)" } ?? "—"
-                print("\(String(format: "%5.1fs", turn.start))  \(label)  \(turn.text)")
+                print("\(String(format: "%5.1fs", turn.start))  \(Self.label(turn))  \(turn.text)")
                 printed += 1
             }
             return
@@ -564,6 +687,9 @@ private final class StreamRenderer: @unchecked Sendable {
             ? Self.palette[5] + "load \(load) — behind" + Self.reset
             : "load \(load)")
         parts.append("\(status.turns) turns · \(status.words) words")
+        if status.contestedTurns > 0 {
+            parts.append("\(status.contestedTurns) contested")
+        }
 
         if stats || behind {
             parts.append(String(format: "update %.0f ms · worst %.0f ms",
@@ -582,16 +708,33 @@ private final class StreamRenderer: @unchecked Sendable {
     /// produced it are on screen — and the flags that move the most are the ones nobody remembers
     /// changing.
     private func settingsLine() -> String {
-        " " + dim(options)
+        // The legend is not optional: `Speaker 2+` is unreadable without it, and an unexplained
+        // marker on a screen built for judging the output is worse than no marker. "colour may be
+        // wrong" rather than "two voices at once", because that is the part the reader has to act
+        // on — the marker is a caveat, not a description of the audio.
+        " " + dim(options) + dim("   ·   Speaker N+ = crosstalk, colour may be wrong")
     }
 
     // MARK: - Turns
+
+    /// What a turn is called on screen, in both the drawn and the plain rendering.
+    ///
+    /// One function rather than two, because the `+` is the honest part of the label and the plain
+    /// rendering is the one people diff between runs — a caveat that only appears in the version
+    /// nobody is comparing would be worse than not having it.
+    ///
+    /// The `+` means the model had more than one slot over threshold at once, so it was choosing.
+    /// A rare marker — around 2% of a DiPCo session — because streaming Sortformer is decisive
+    /// about who is speaking, and it is not always right to be.
+    static func label(_ turn: StreamedTurn) -> String {
+        turn.speaker.map { "Speaker \($0 + 1)\(turn.isContested ? "+" : "")" } ?? "—"
+    }
 
     /// One entry per visual line, already coloured.
     private func body(_ turns: [StreamedTurn], width: Int) -> [String] {
         var lines: [String] = []
         for turn in turns {
-            let label = turn.speaker.map { "Speaker \($0 + 1)" } ?? "—"
+            let label = Self.label(turn)
             let colour = turn.speaker.map { Self.palette[$0 % Self.palette.count] } ?? Self.dimEscape
             let stamp = String(format: "%5.1fs ", turn.start)
 
