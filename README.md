@@ -12,8 +12,14 @@ in a noisy room is unknown.
 ```bash
 swift run -c release caption-harness list
 swift run -c release caption-harness evaluate --all --model-cache .models
-make live                      # captions the microphone until Ctrl-C
+make stream                    # the app's engine, live, with one colour per speaker
+make live                      # the older Whisper loop, no speaker colours
 ```
+
+`make stream` is the one to sit in front of. It is the pipeline the app is being built around —
+Parakeet EOU for words, streaming Sortformer for speakers — running off the microphone, so it shows
+what the app will feel like rather than what it scores. `make stream-file FIXTURE=family-dinner`
+replays a recording through the identical pipeline with no one needed at the microphone.
 
 The first run downloads the model (~1.5 GB) into `.models/`.
 
@@ -31,15 +37,19 @@ The first run downloads the model (~1.5 GB) into `.models/`.
 | `make unit` | The scoring and segmentation logic. No model, no audio, fast |
 | `make live` | Captions the microphone until Ctrl-C. `NAMES="mum,david"` highlights names |
 | `make live-file` | Replays one fixture through the live loop: `FIXTURE=doctor-visit` |
+| `make stream` | The app's engine live: Parakeet EOU + Sortformer, one colour per speaker |
+| `make stream-file` | The same, replayed: `FIXTURE=family-dinner SPEED=4` to hurry it |
 | `list` | Show the fixtures and what each one covers |
 | `transcribe <file>` | One file, with timestamps and latency. `--json` for machine-readable output |
 | `evaluate <fixture>` | Score one fixture: WER, critical information, latency |
 | `evaluate --all` | Every fixture, plus a summary. `--output <file>` writes JSON |
 | `report <fixture>` | The markdown report on stdout, without running the `make` target |
 | `live` | Live capture from the microphone, or `--from-file` to replay a recording |
+| `stream` | The shipping engine live, with speakers. `--plain` to pipe, `--stats` for timings |
 
 Useful flags: `--model` (compare model sizes), `--vad` (voice-activity chunking on/off),
 `--turns` (print the visual blocks the app would show), `--auto-language`, `--no-prewarm`.
+For `stream`: `--chunk-ms` (160/320/1280), `--eou-debounce-ms`, `--min-turn`, `--max-seconds`.
 
 `reports/` is generated, so it is gitignored: run `make test` to regenerate rather than editing it.
 The committed reference point is `evaluations/baseline.json`; `evaluations/2026-10-08-pre-scorer-fix.json`
@@ -370,6 +380,29 @@ which is how the live path is tested without asking anyone to talk into a laptop
 Nothing here is scored — a live conversation has no reference transcript. It answers the other
 question: whether the engine keeps up, and what that costs in accuracy.
 
+### The shipping engine, and how to judge it
+
+Everything in this section describes the Whisper loop the harness was first built on. The engine the
+app is being built around is different and simpler to look at: **`make stream`**.
+
+It runs Parakeet EOU for the words and streaming Sortformer for the speakers, off the microphone,
+and prints one colour per speaker as the conversation arrives. Nothing about it is scored, because a
+live conversation has no reference — it exists because "72.3% at ≥ 2 s and 83% colour constancy" is
+not the same claim as "pleasant to sit in front of", and only the second one decides whether this
+ships. Read the colours as a hint rather than a fact: the failure to watch for is not a wrong colour
+but a colour that *moves* to a different person mid-conversation, which is the one thing a reader
+cannot detect.
+
+Two upstream traps are handled in `StreamingCaptioner.swift` and are worth knowing before touching
+it. `StreamingEouAsrManager.process(audioBuffer:)` returns an **empty string** — the transcription
+happens in `finish()`, so the obvious `transcript += try await process(...)` shows a blank screen
+until the stream ends and then dumps everything at once; live text comes from the token accessors,
+which must be consumed through a cursor because they accumulate monotonically. And Parakeet's
+timestamps are **starts only**, so a word's end has to be inferred from the next word's start — which
+is wrong whenever silence follows, and without a cap a single trailing word before a pause acquires
+a twelve-second duration, passes any minimum-turn test, and lands its midpoint in the silence where
+the speaker is somebody else.
+
 ### Finding 9: live capture cannot use the model the report measures
 
 The report measures `large-v3-turbo`. The live loop cannot, and the difference is not a tuning
@@ -621,9 +654,7 @@ Sources/CaptionKit/
   Model/            Transcript, segments, words, latency — the app-facing model
   ASR/              WhisperKit engine wrapper, actor-isolated
   Segmentation/     Turn splitting on sustained silence
-  Live/             Capture sources, level meter, the sliding-window loop
-  Fixtures/         Fixture discovery and metadata
-  Evaluation/       Fuses the three measurements into one report
+  Live/             Capture sources, level meter, the sliding-window loop, and the shipping engine
 Sources/CaptionHarness/   The CLI
 Fixtures/                 Audio, reference transcripts, metadata, speaker annotations
 Scripts/
@@ -632,7 +663,14 @@ Scripts/
   ami_annotations.py      Turns AMI word annotations into a reference transcript
   speaker_annotations.py  Writes Fixtures/annotations/ — who spoke each reference line
   speaker_signal.py       Measures whether cheap acoustic features separate the real speakers
+  diarization_score.py    Scores a diarizer's output, with --stability for colour constancy
+  caption-audio.py        One command: normalise a recording, diarize, score, report constancy
+  dipco-farfield-benchmark.sh, ami-farfield-benchmark.sh   Corpus-wide sweeps
 ```
+
+`Sources/CaptionKit/Live/StreamingCaptioner.swift` is the shipping engine and
+`Sources/CaptionHarness/Stream.swift` is the view that proves it out; both are separate from the
+`live` loop above, which is the Whisper-era one kept for comparison.
 
 The committed fixtures are 4.6 MB synthetic and 4.3 MB recorded. The AMI corpus they are cut from
 is a 62 MB download, fetched on demand into a gitignored `.corpora/`.
@@ -647,11 +685,11 @@ cannot tell who spoke — only that speech stopped and restarted. That is enough
 and costs a fraction of real diarization, which matters when this runs continuously on a phone.
 WhisperKit does ship `SpeakerKit` if real speaker labels are ever wanted — and Finding 14 measured
 that the cheap alternative does not work on real speech, so real diarization is not a nicety to reach
-for later. **A streaming one has now been measured, and it works in a meeting room but not yet in a
-home:** Parakeet's LS-EEND gets 68–81% of two-second-plus turns right on complete far-field AMI
-meetings, but **48%** on ten DiPCo dinner-table sessions — while the *same conversation* through the
-participants' close-talk headsets scores 68%. The room is the loss, not the model, and a phone on a
-table is the room. It is also only that good on its `dihard3` variant, which is not the default. See
+for later. **A streaming one has now been measured, and it does work at a dinner table:** streaming
+Sortformer gets **72% of two-second-plus turns right** across ten DiPCo dinner-table sessions, at
+**83% colour constancy**, and beats LS-EEND's best variant on all ten. The caveat is not accuracy but
+drift — about one session in five moves a colour part-way through — and the engine is capped at four
+speakers, which is why that limit is a design input rather than a defect. See
 [ENGINES.md](ENGINES.md).
 
 **Word timings are required, not optional.** Without them a turn can only break at recognizer
@@ -701,28 +739,24 @@ reading "manager.").
   including "the last turn is attributed to the wrong speaker" (a tail-padding effect, and the tail
   is always the turn on screen). The vendored copy's embedder and clustering types are `internal`,
   so a hand-rolled streaming wrapper on top of them is not available either. **A different engine is
-  the alternative, and it has now been measured — see [ENGINES.md](ENGINES.md).** Parakeet's 0.6B TDT
-  model runs this fixture set at a real-time factor of 0.009, and its streaming LS-EEND diarizer
-  labels turns correctly at **68–81% for turns of two seconds or more**, far-field, at 150× realtime
-  across two complete real meetings. Speaker grouping has a measurement rather than an assumption,
-  and it comes with two caveats that each cost real time to find. **LS-EEND defaults to
-  `ls_eend_ami`, which collapses to one cluster on far-field audio — 4% and 12% on those meetings,
-  against `dihard3`'s 42% and 44% flat.** And a flat figure is the wrong figure: about half the
-  turns in a real meeting are shorter than the diarizer's 500 ms step and cannot be resolved, which
-  is what drags the flat number down while the turns anyone would read score far higher. **And the
-  68–81% is an AMI number.** On ten DiPCo dinner-table sessions it is **38% flat and 48% for turns
-  of two seconds or more**, ranging 26–65% between sessions, with only 53 of 7,078 turns shorter
-  than the diarizer's step — so unlike AMI, the flat figure is not a resolution artefact. There the
-  explanation is the room: the same conversation, same reference, same model, run on a mix of the
-  four close-talk headsets, finds exactly four clusters in a clean one-to-one and scores 58%/68%.
-  Splitting length and overlap together prices the two causes — on turns that are **both** ≥ 2 s and
-  uncontested, DiPCo scores **54% against AMI's 72%**, so the room is worth about eighteen points,
-  while two thirds of DiPCo's turns have someone talking over them and those cost about twelve more.
-  A colour that is right half the time on the turns someone would read is worse than no colour, so
-  **speaker identity is not shippable on the strength of the AMI result**, and the honest
-  alternatives are showing turn changes without claiming who, or treating diarization as the feature
-  to solve first. See [ENGINES.md](ENGINES.md); `Scripts/diarization_score.py`,
-  `Scripts/ami-farfield-benchmark.sh` and `Scripts/dipco-farfield-benchmark.sh` produce the numbers.
+  the alternative, and it has now been measured — see [ENGINES.md](ENGINES.md).** Two Parakeet models
+  answer the question and they are not the ones that first looked right. The 0.6B TDT model runs this
+  fixture set at a real-time factor of 0.009, but its *streaming* export re-encodes 5.6 seconds of
+  left context per 80 ms chunk and measures a real-time factor of 10.7–31.8, so the accurate model is
+  the one that cannot be used live; the live words come from streaming EOU at 320 ms instead. And the
+  diarizer is **streaming Sortformer, not LS-EEND**, which defaults to `ls_eend_ami` and collapses to
+  one cluster on far-field audio — 4% and 12% on the AMI meetings, against `dihard3`'s 42% and 44%
+  flat. On ten DiPCo dinner-table sessions Sortformer scores **49.5% flat, 72.3% at ≥ 2 s and 82.3%
+  at ≥ 5 s, with 83.3% colour constancy**, and beats `dihard3` — LS-EEND's best variant, checked
+  against all four — on all ten sessions. Both engines lose the same way to the room and to overlap:
+  two thirds of DiPCo's turns have someone talking over them, and on close-talk headsets the same
+  conversation finds exactly four clusters in a clean one-to-one. But the gap between the two models
+  at ≥ 2 s is twenty-four points, which is larger than the room is worth, so **the model was the
+  binding constraint and it has been replaced.** What is left is drift: constancy averages 83% and
+  hides one session in five at 33–67%, and a colour that moves mid-conversation is the failure a
+  reader cannot detect. `enrollSpeaker` is the mechanism against it and has not been tried.
+  `Scripts/caption-audio.py`, `Scripts/diarization_score.py` (`--stability`) and
+  `Scripts/dipco-farfield-benchmark.sh` produce these numbers.
 - **Only `small` has been run live on speech.** `base` and `large-v3-turbo` have now been through the
   loop on non-speech (Finding 12), but neither has captioned a fixture: `base` was measured offline
   only, and turbo cannot keep up. Whether an intermediate model is the better trade — turbo's
@@ -760,6 +794,8 @@ reading "manager.").
 make unit           # 116 tests, no model required
 make test           # runs the fixtures and writes reports/latest.md
 make live-file FIXTURE=family-dinner   # the live loop, replayed, with per-decode diagnostics
+make stream         # the shipping engine, live, with speaker colours — judge it by ear
+make stream-file FIXTURE=family-dinner # the same pipeline off a recording
 ```
 
 **Run live measurements alone.** The live loop is a real-time system, so anything else on the

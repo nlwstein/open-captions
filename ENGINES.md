@@ -175,7 +175,50 @@ footgun below is the single most expensive thing in this document.
 document did, that far-field diarization does not work. It is worth checking whether the library's
 Swift API exposes the same default.
 
-### DiPCo: the same measurement at a dinner table, and it is much worse
+### DiPCo: the same measurement at a dinner table, and the model matters more than the room
+
+**Correction, added after this section was written: every number below is LS-EEND, and LS-EEND is not
+the engine.** The section ends by concluding that speaker colours must not ship. That conclusion was
+drawn from the wrong model and it does not hold. Run the same ten sessions through streaming
+**Sortformer** — the other diarizer in the same package, and the one the app would actually use — and
+it wins on every session, on both the headline score and colour constancy:
+
+| DiPCo, all ten sessions | Sortformer | LS-EEND (`dihard3`) |
+|---|---|---|
+| all turns | **49.5%** | 39.9% |
+| turns ≥ 2 s | **72.3%** | 52.2% |
+| turns ≥ 5 s | **82.3%** | 56.6% |
+| one colour per speaker | **83.3%** | 50.0% |
+
+Sortformer is ahead on **10 of 10 sessions** flat and **10 of 10** on constancy. The ≥ 2 s figure is
+**72%**, not 48%: placing it beside the AMI meetings, the dinner table is *not* worse than the
+meeting room — 72% at a table against AMI's 68% and 81%.
+
+Three checks were run against the possibility that this is a flattering comparison.
+
+- **`dihard3` is LS-EEND's best variant, not a straw man.** `ami`, the CLI default, detects *nothing*
+  on S02 — all four speakers at 0.0 s active. The others score `callhome` 36%, `dihard2` 43%,
+  `dihard3` 46% on the same session. The row above is the strongest LS-EEND has.
+- **Sortformer's fixed four slots are not the advantage they look like.** It is architecturally
+  capped at four speakers, and DiPCo has exactly four, so this corpus is the most favourable case the
+  model will ever get. `dihard3` is built for ten. The margin survives anyway.
+- **Streaming beats the fused offline model.** On S02, the streaming path scores 71% where
+  `--offline` scores 40%, with constancy of 100% against 17%.
+
+**What breaks the old conclusion is not that the room is harmless — it is that the room was never the
+whole loss.** The close-talk control below is still the clearest single result in this section, and
+the overlap breakdown still prices contention at about twelve points. What changes is the ceiling: a
+better diarizer, not a better microphone, was worth twenty-four points at ≥ 2 s.
+
+**The honest caveat is colour drift, not accuracy.** Constancy is 83% across windows on average, but
+that average hides S08 at 33% and S04 at 67% — roughly one session in five moves a colour mid-way
+through a conversation, and that is the failure a reader cannot detect. Accuracy is good enough to
+ship on this evidence; identity stability is the thing still worth engineering, which is what
+enrolment is for.
+
+Everything below this correction is LS-EEND, kept because the close-talk/array control and the
+overlap cross-tab are the measurements that explain *why* the two models differ, and because the
+wrong turn is worth being able to retrace.
 
 AMI is design meetings in an instrumented room. The app is for a family dinner in a home, so the
 question "does the room matter" is not academic. **DiPCo** is ten sessions of four Amazon volunteers
@@ -274,18 +317,19 @@ not for use. The DiPCo and AMI cells beside it are 500–1,500 turns each.
 end to end, about **145× realtime**, consistent with AMI's 146–167×. The whole-corpus run costs less
 than a coffee.
 
-**What this means for the app, and it is not what the AMI numbers suggested.** A colour that is right
-half the time on the turns someone would read, and wrong the other half, is worse than no colour:
-the reader cannot tell which turns to distrust, and a caption aid for someone with cognitive decline
-must not invent structure. The AMI result ("seven to eight times in ten in the band that matters")
-supported shipping speaker colours. **The DiPCo result does not.** The honest options are to show
-speaker change without claiming identity — a break or a bullet rather than a name or a colour — or to
-treat diarization as the feature to get right before the UI, which is what the measurement now
-supports. Nothing here says the approach is hopeless; the close-talk row says the model is fine and
-the room is the problem, and room robustness is exactly what a phone on a table needs. Two things
-make the target harder still, and neither was measured on a phone: DiPCo's best array is seven
-microphones at a fixed position on a table, and **two thirds of the turns in that setting have
-someone else talking over them**, which no diarizer can resolve on its own.
+**What LS-EEND's DiPCo numbers mean — and the correction at the top of this section is what
+governs.** Read on their own, a colour that is right half the time on the turns someone would read is
+worse than no colour: the reader cannot tell which turns to distrust, and a caption aid for someone
+with cognitive decline must not invent structure. That was the reasoning behind "do not ship", and
+it was sound given these numbers. **It was applied to the wrong model.** Sortformer's 72% at ≥ 2 s
+and 83% constancy is the figure the shipping decision rests on, and 72% is above the AMI number that
+first looked good enough. The rest of this section is kept because it prices the two causes
+separately, and the fix that follows from it is different depending on which one you believe: the
+close-talk row below says the model was fine and the room was the problem, while the Sortformer
+comparison says the model was the problem and the room costs less than this section claims. Two
+things remain true and neither was measured on a phone: DiPCo's best array is seven microphones at a
+fixed position on a table, and **two thirds of the turns in that setting have someone else talking
+over them**, which no diarizer can resolve on its own.
 
 ## What was not measured
 
@@ -294,8 +338,9 @@ someone else talking over them**, which no diarizer can resolve on its own.
 - **No streaming test of Parakeet TDT.** The 0.009 figure is a full-file batch decode. Feeding it a
   live loop of sliding windows is a different measurement and it has not been run.
 - **Three meetings of 171, all AMI, plus all ten DiPCo sessions.** The AMI meetings cover two of the
-  three recording sites and both four- and five-speaker setups; DiPCo is ten homes. Nothing here is
-  a single-room fluke any more, and the DiPCo spread (26–65% at ≥ 2 s) is the honest error bar.
+  three recording sites and both four- and five-speaker setups; DiPCo is ten sessions of a simulated
+  dinner party in a lab, not ten homes. Nothing here is a single-room fluke any more, and the DiPCo
+  spread (26–65% at ≥ 2 s for LS-EEND, 40–71% flat for Sortformer) is the honest error bar.
 - **No third corpus.** CHiME-6 (real dinner parties, OpenSLR SLR150) also fits the app's setting and
   has not been run. Its value now is as a check on DiPCo's 48%, not as the first look at a home.
 - **"The room" is still a black box.** The cross-tab prices the room at eighteen points on clean,
@@ -351,6 +396,18 @@ for v in ami dihard3 callhome dihard2; do
   uv run --no-project python -I Scripts/diarization_score.py ami-meeting-far "/tmp/far-$v.log"
 done
 
+# Sortformer, the diarizer that actually wins. No --offline: the streaming path is both the
+# faster one and the better one, and it is what the app can use.
+for s in S01 S02 S03 S04 S05 S06 S07 S08 S09 S10; do
+  /tmp/fluidaudio-eval/src/.build/release/fluidaudiocli sortformer \
+    ".corpora/dipco/$s/${s}_U01.CH1.wav" --output "/tmp/sf-$s.json"
+done
+
+# --stability N is the colour-constancy check: solve the cluster->speaker mapping independently
+# in each of N time windows and count how often a window agrees with the file-wide answer.
+uv run --no-project python -I Scripts/diarization_score.py "$s" "/tmp/sf-$s.json" \
+  --turns /tmp/sf-turns.jsonl --stability 6
+
 # whole AMI meetings, no window chosen
 Scripts/ami-farfield-benchmark.sh EN2001a TS3003a --variant dihard3
 
@@ -360,10 +417,15 @@ Scripts/dipco-farfield-benchmark.sh S01 S02 S04 S07 S08 --device U01
 Scripts/dipco-farfield-benchmark.sh S03 S05 S06 S09 S10 --device U04
 ```
 
+`Scripts/caption-audio.py <file>` runs the same DiPCo pipeline in one command when the CLI is on
+`PATH` as `~/.local/bin/fluidaudiocli`: it normalises the array channel, diarizes, scores, and
+reports constancy without needing the corpus layout or a virtualenv.
+
 `score` exists for exactly this: it takes text some other process produced and puts it through the
 same `TranscriptEvaluator` and `CriticalInfoScorer` as everything else in `reports/`, so an engine
 can be compared before anyone commits to integrating it.
 
 Version note: FluidAudio was evaluated at commit `fc8c3e4` (2026-10-09). The package is moving fast
-— its source comments cite issues up to #897 in a one-day-old checkout — so pin a commit rather than
-tracking a branch if this becomes a dependency.
+— its source comments cite issues up to #897 in a one-day-old checkout — so it is now pinned by
+exact revision in `Package.swift` rather than tracked, because it ships model-download URLs and
+CoreML shapes that a moving dependency would change underneath these measurements.
