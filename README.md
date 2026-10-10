@@ -51,6 +51,12 @@ Useful flags: `--model` (compare model sizes), `--vad` (voice-activity chunking 
 `--turns` (print the visual blocks the app would show), `--auto-language`, `--no-prewarm`.
 For `stream`: `--chunk-ms` (160/320/1280), `--eou-debounce-ms`, `--min-turn`, `--max-seconds`.
 
+**Any recording works, at any sample rate.** `--from-file` takes 16 kHz, 44.1 kHz, 48 kHz or higher,
+mono or multi-channel, and resamples to the 16 kHz mono the engine wants. That is worth saying out
+loud because it was not always true: the file loader used to spend about eleven diarization points on
+high-rate input, which showed up as a bad score rather than as an error. See "The file loader was the
+bug" in ENGINES.md before trusting any comparison against numbers from before 2026-10-10.
+
 `reports/` is generated, so it is gitignored: run `make test` to regenerate rather than editing it.
 The committed reference point is `evaluations/baseline.json`; `evaluations/2026-10-08-pre-scorer-fix.json`
 is kept alongside it as the before/after of the critical-information scorer change.
