@@ -36,6 +36,10 @@ let package = Package(
             dependencies: [
                 "CaptionKit",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                // Named directly rather than hidden behind CaptionKit, because the recogniser
+                // variant is the axis most of this harness's experiments move along, and a wrapper
+                // would only be a list of FluidAudio's cases copied out by hand and left to drift.
+                .product(name: "FluidAudio", package: "FluidAudio"),
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

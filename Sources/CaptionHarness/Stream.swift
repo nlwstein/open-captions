@@ -1,5 +1,6 @@
 import ArgumentParser
 import CaptionKit
+import FluidAudio
 import Foundation
 
 #if canImport(Darwin)
@@ -24,17 +25,17 @@ import Darwin
 struct Stream: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "stream",
-        abstract: "Live captions with speaker colours: Parakeet EOU + streaming Sortformer.",
+        abstract: "Live captions with speaker colours: a streaming recogniser + Sortformer.",
         discussion: """
         Captures the microphone and prints one colour per speaker as the words arrive. With \
         --from-file the identical pipeline runs off a recording instead, which is how this is \
         tested without asking anyone to talk into a laptop.
 
-        The two models are the ones the measurements point at. Words come from Parakeet EOU at \
-        320 ms, not from Whisper and not from batch Parakeet: the batch TDT export re-encodes 5.6 \
-        seconds of left context per 80 ms chunk and runs slower than real time, so it cannot be used \
-        live however accurate it is on a file. Speakers come from streaming Sortformer, which beat \
-        every LS-EEND variant on all ten DiPCo sessions.
+        Words come from a streaming recogniser — Parakeet EOU at 320 ms by default, with \
+        --asr choosing another. What the engine must not be is Whisper, or batch Parakeet: the \
+        batch TDT export re-encodes 5.6 seconds of left context per 80 ms chunk and runs slower \
+        than real time, so it cannot be used live however accurate it is on a file. Speakers come \
+        from streaming Sortformer, which beat every LS-EEND variant on all ten DiPCo sessions.
 
         When it finishes, the transcript is reprinted below the screen so it survives in scrollback \
         and can be pasted somewhere.
@@ -49,6 +50,15 @@ struct Stream: AsyncParsableCommand {
 
     @Option(name: .long, help: "Stop after this many seconds of audio.")
     var maxSeconds: Double?
+
+    @Option(
+        name: .long,
+        help: """
+            Recogniser to run. Any StreamingModelVariant raw value, e.g. parakeet-eou320ms \
+            (default), parakeet-unified320ms, parakeet-unified1120ms, nemotron560ms.
+            """
+    )
+    var asr: String = "parakeet-eou-320ms"
 
     @Option(name: .long, help: "Audio chunks, in ms, that the recogniser works on: 160, 320 or 1280.")
     var chunkMs: Int = 320
@@ -85,10 +95,10 @@ struct Stream: AsyncParsableCommand {
         parsing: .upToNextOption,
         help: """
         Introduce the diarizer to a voice before the session starts, as `name=path.wav`. Repeatable. \
-        This is not a label: the clip is fed through the model, which primes its speaker cache with \
-        that voice — the only mechanism available against slot drift, where a colour moves to a \
-        different person mid-conversation and the reader has no way to tell. Give each person \
-        fifteen to thirty seconds of their own speech, uninterrupted.
+        Measured on DiPCo S02 and not recommended: feeding all four participants through \
+        `enrollSpeaker` cost fifteen points of speaker attribution (69% → 54%) and did not reduce \
+        slot drift at all. Names stay a human overlay — press 1-4 while it runs, or fix a colour \
+        up afterwards with `c`. Kept because the measurement is worth being able to repeat.
         """
     )
     var enroll: [String] = []
@@ -105,6 +115,11 @@ struct Stream: AsyncParsableCommand {
         }
 
         var options = StreamingCaptioner.Options()
+        guard let variant = StreamingModelVariant(rawValue: asr) else {
+            let known = StreamingModelVariant.allCases.map(\.rawValue).joined(separator: ", ")
+            throw ValidationError("--asr must be one of: \(known)")
+        }
+        options.asrVariant = variant
         switch chunkMs {
         case 160: options.chunkSize = .ms160
         case 320: options.chunkSize = .ms320
@@ -249,8 +264,10 @@ struct Stream: AsyncParsableCommand {
     /// chunk (but 320ms latency due to shift)". Printing 630 would have doubled the apparent
     /// latency on the one display built for judging latency.
     private func settings(_ options: StreamingCaptioner.Options) -> String {
-        "EOU \(chunkMs) ms · debounce \(options.eouDebounceMs) ms · min turn "
-            + String(format: "%.2f s", options.minTurnSeconds)
+        let recogniser = options.asrVariant.rawValue.hasPrefix("parakeet-eou")
+            ? "EOU \(chunkMs) ms · debounce \(options.eouDebounceMs) ms"
+            : options.asrVariant.rawValue
+        return "\(recogniser) · min turn " + String(format: "%.2f s", options.minTurnSeconds)
     }
 }
 

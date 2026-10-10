@@ -179,8 +179,20 @@ public struct CaptionerUpdate: Sendable {
 public final class StreamingCaptioner: @unchecked Sendable {
 
     public struct Options: Sendable {
+        /// Which recogniser runs. Defaults to what every number in ENGINES.md was measured with.
+        ///
+        /// Two families are available and they are not close. **Parakeet EOU 120M** is the small
+        /// cache-aware streaming model this started on. **Parakeet Unified 0.6B** is five times the
+        /// parameters at the same latency, and FluidAudio's own sweep puts it at 2.37% WER on
+        /// LibriSpeech test-clean against 4.88% for EOU — with punctuation and capitalisation,
+        /// which EOU does not emit at all. It also hands out word timings with real end times
+        /// rather than starts only, which is the difference between inferring when a word stopped
+        /// and knowing.
+        public var asrVariant: StreamingModelVariant = .parakeetEou320ms
+
         /// 320 ms is the shortest EOU chunk that holds up: 4.88% WER at 19.25x realtime in
-        /// FluidAudio's own M-series benchmarks, against 8.23% at 160 ms.
+        /// FluidAudio's own M-series benchmarks, against 8.23% at 160 ms. Ignored unless
+        /// `asrVariant` is an EOU variant, which carries its chunk size in its own name.
         public var chunkSize: StreamingChunkSize = .ms320
 
         /// How long EOU must stay silent before an utterance is called finished. Upstream defaults
@@ -205,19 +217,46 @@ public final class StreamingCaptioner: @unchecked Sendable {
     }
 
     private let options: Options
-    private let eou: StreamingEouAsrManager
+    private let asr: any StreamingAsrManager
+
+    /// Set only when the recogniser is the Unified one, which is the only engine here that reports
+    /// end times. Held separately because its token accessors are not part of `StreamingAsrManager`
+    /// — the protocol's capabilities are optional, and Unified implements neither of them.
+    ///
+    /// Note this is `consumeTokenTimings`, not the `consumeWordTimings` helper that wraps it. That
+    /// helper groups sub-word pieces into words *within a single call*, so a word whose two tokens
+    /// straddle a drain comes back as two words — measured on DiPCo as "mot her", "sch ool",
+    /// "Y eah". Worse, it strips the `▁` boundary markers while doing so, which is the information
+    /// needed to put them back together. Grouping here instead keeps one word open across drains,
+    /// as the EOU branch already does for the same reason.
+    private let unifiedAsr: StreamingUnifiedAsrManager?
+
+    /// Set only when the recogniser is a Nemotron one. Its token accessors are on the concrete
+    /// class and conform to none of the optional capabilities, so it needs naming too.
+    private let nemotronAsr: StreamingNemotronAsrManager?
     private let diarizer: SortformerDiarizer
 
     public init(options: Options = Options()) {
         self.options = options
-        self.eou = StreamingEouAsrManager(chunkSize: options.chunkSize, eouDebounceMs: options.eouDebounceMs)
+
+        if options.asrVariant.rawValue.hasPrefix("parakeet-eou") {
+            self.asr = StreamingEouAsrManager(chunkSize: options.chunkSize,
+                                              eouDebounceMs: options.eouDebounceMs)
+            self.unifiedAsr = nil
+            self.nemotronAsr = nil
+        } else {
+            let manager = options.asrVariant.createManager()
+            self.asr = manager
+            self.unifiedAsr = manager as? StreamingUnifiedAsrManager
+            self.nemotronAsr = manager as? StreamingNemotronAsrManager
+        }
         self.diarizer = SortformerDiarizer(config: options.sortformerConfig)
     }
 
     /// Downloads models if needed and loads them. Cold start is tens of seconds the first time.
     public func prepare(progress: (@Sendable (String) -> Void)? = nil) async throws {
-        progress?("loading Parakeet EOU (\(options.chunkSize.durationMs) ms chunks)…")
-        try await eou.loadModels()
+        progress?("loading \(options.asrVariant.displayName)…")
+        try await asr.loadModels()
 
         progress?("loading Sortformer…")
         let models = try await SortformerModels.loadFromHuggingFace(config: options.sortformerConfig)
@@ -292,10 +331,12 @@ public final class StreamingCaptioner: @unchecked Sendable {
 
             meter.append(chunk)
 
-            // Words first: EOU buffers internally, so feeding it a short chunk is correct and it
-            // decodes whenever it has accumulated a full one.
+            // Words first: every recogniser here buffers internally, so feeding a short chunk is
+            // correct and it decodes whenever it has accumulated a full one. `appendAudio` alone
+            // would only fill that buffer, hence the explicit `processBufferedAudio`.
             if let buffer = Self.buffer(from: chunk, format: format) {
-                _ = try await eou.process(audioBuffer: buffer)
+                try await asr.appendAudio(buffer)
+                try await asr.processBufferedAudio()
             }
             consumed = await harvest(into: &words, consumed: consumed, clock: clock)
 
@@ -331,8 +372,8 @@ public final class StreamingCaptioner: @unchecked Sendable {
             onUpdate(CaptionerUpdate(turns: built, status: status, audio: chunk, isFinal: false))
         }
 
-        // Flush whatever EOU is still holding, then take the last of it.
-        _ = try? await eou.finish()
+        // Flush whatever the recogniser is still holding, then take the last of it.
+        _ = try? await asr.finish()
         _ = await harvest(into: &words, consumed: consumed, clock: clock)
         _ = try? diarizer.finalizeSession()
         let built = turns(words: words, open: false)
@@ -383,8 +424,34 @@ public final class StreamingCaptioner: @unchecked Sendable {
     ///
     /// The final word is closed against the audio clock, capped the same way.
     private func harvest(into words: inout [StreamedWord], consumed: Int, clock: Double) async -> Int {
-        let tokens = await eou.getRawTokenStrings()
-        let stamps = await eou.getTokenTimestampsMs()
+        // Unified gets the same treatment as EOU rather than its own: same boundary rule, same
+        // "leave the last word open" trick, and real end times instead of inferred ones. See the
+        // note on `unifiedAsr` for why its own word helper cannot be used.
+        if let unifiedAsr {
+            let tokens = await unifiedAsr.consumeTokenTimings()
+            Self.group(tokens, into: &words)
+            return consumed + tokens.count
+        }
+
+        // Nemotron hands back everything it has accumulated on every call rather than draining,
+        // so the cursor is an index into that list instead of a count of what has arrived. It also
+        // conforms to neither optional capability below, which is why it needs its own branch: the
+        // EOU path finds no token source and quietly returns nothing.
+        if let nemotronAsr {
+            let timings = await nemotronAsr.getTokenTimings()
+            guard consumed < timings.count else { return consumed }
+            Self.group(Array(timings[consumed...]), into: &words)
+            return timings.count
+        }
+
+        // Optional capabilities rather than protocol requirements, so an engine that does not
+        // report per-token detail simply yields nothing here instead of failing to compile.
+        guard let tokenSource = asr as? StreamingAsrRawTokenProvider,
+              let stampSource = asr as? StreamingAsrTokenTimestampProvider
+        else { return consumed }
+
+        let tokens = await tokenSource.getRawTokenStrings()
+        let stamps = await stampSource.getTokenTimestampsMs()
         let available = min(tokens.count, stamps.count)
         guard consumed < available else { return consumed }
 
@@ -412,6 +479,33 @@ public final class StreamingCaptioner: @unchecked Sendable {
             words[words.count - 1].end = min(max(last.end, last.start), last.start + Self.maxInferredWordSeconds)
         }
         return available
+    }
+
+    /// Folds a run of token timings into `words`, appending and leaving the final word *open*.
+    ///
+    /// Open matters. The tokens for one word can arrive across two calls, and a grouping rule that
+    /// closed the word at the end of each call would split it — measured on DiPCo as "mot her",
+    /// "sch ool", "Y eah". So a sub-word piece is appended to whatever word is already last, and
+    /// only a token carrying a word-boundary marker starts a new one.
+    ///
+    /// End times only ever move forward, because FluidAudio's back-fill can shorten the token
+    /// before this one. A word that ended before it started would make the turn builder's midpoint
+    /// arithmetic nonsense, and holding the maximum costs at most one frame.
+    private static func group(_ timings: [TokenTiming], into words: inout [StreamedWord]) {
+        for timing in timings {
+            let text = timing.token.replacingOccurrences(of: "\u{2581}", with: " ")
+            let trimmed = text.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+
+            if text.hasPrefix(" ") || words.isEmpty {
+                words.append(StreamedWord(text: trimmed,
+                                          start: timing.startTime,
+                                          end: max(timing.endTime, timing.startTime)))
+            } else {
+                words[words.count - 1].text += text
+                words[words.count - 1].end = max(words[words.count - 1].end, timing.endTime)
+            }
+        }
     }
 
     // MARK: - Speakers
