@@ -92,6 +92,35 @@ def load_truth(
     ]
 
 
+def contested(truth: list[tuple[float, float, str]]) -> list[float]:
+    """Per turn: what fraction of it has another speaker talking at the same time?
+
+    This is the reference's own overlap, not the diarizer's, so it says which turns *could* have
+    been resolved rather than which were — which is the point. It separates "two people were
+    talking at once and the diarizer picked one" from "one person was talking and the diarizer got
+    it wrong", and those call for different fixes: the first is not a diarization problem at all.
+
+    Measured as a fraction rather than a yes/no because a corpus like DiPCo saturates a yes/no —
+    almost every turn in a dinner party touches some other turn somewhere, and a flag that is true
+    for 96% of turns says nothing. What matters is whether the clash occupies the turn or merely
+    clips its edge.
+    """
+    segments = [(start, end) for start, end, _ in truth]
+    fractions = [0.0] * len(truth)
+
+    for index, (start, end) in enumerate(segments):
+        length = end - start
+        if length <= 0:
+            continue
+        clash = 0.0
+        for other, (ostart, oend) in enumerate(segments):
+            if other != index:
+                clash += max(0.0, min(end, oend) - max(start, ostart))
+        fractions[index] = min(1.0, clash / length)
+
+    return fractions
+
+
 def clip_start() -> float:
     match = re.search(
         r"^CLIP_START=([\d.]+)",
@@ -244,6 +273,13 @@ def main() -> int:
         help="Print every turn. Off by default: a full meeting has thousands, and the "
         "duration breakdown above carries the finding.",
     )
+    parser.add_argument(
+        "--cross",
+        action="store_true",
+        help="Accuracy by turn length AND overlap together. Length alone flatters a meeting "
+        "full of short backchannels and overlap alone flatters one full of long turn-taking; "
+        "holding both fixed is the only comparison that travels between corpora.",
+    )
     args = parser.parse_args()
 
     offset = args.clip_start if args.clip_start is not None else clip_start()
@@ -306,6 +342,41 @@ def main() -> int:
         if edge is None:
             break
         previous = edge
+
+    # Printed only when the recording has overlap at all, so the single-speaker fixtures do not
+    # grow a section that says "none".
+    clashes = contested(truth)
+    if max(clashes) >= 0.1:
+        print("\n  by how much of the turn someone else is talking over it")
+        for low, high in ((0.0, 0.1), (0.1, 0.5), (0.5, 1.01)):
+            selected = [r for r, c in zip(rows, clashes) if low <= c < high]
+            if selected:
+                right = sum(1 for r in selected if r[2] == r[0])
+                share = 100 * len(selected) / len(rows)
+                name = f"{low:.0%}–{high:.0%}" if high <= 1 else f"≥{low:.0%}"
+                print(
+                    f"    {name:<8} {right:5d}/{len(selected):<5d} "
+                    f"{100 * right / len(selected):5.0f}%   ({share:.0f}% of turns)"
+                )
+
+    if args.cross:
+        print("\n  by turn length and overlap together")
+        print(f"    {'':<10} {'clear <10%':>14} {'10-50%':>14} {'contested >=50%':>16}")
+        for low, high in ((0.0, 2.0), (2.0, float("inf"))):
+            name = f"{'<2s' if high == 2.0 else '>=2s'}"
+            cells = []
+            for clash_low, clash_high in ((0.0, 0.1), (0.1, 0.5), (0.5, 1.01)):
+                selected = [
+                    r
+                    for r, c in zip(rows, clashes)
+                    if low <= r[3] < high and clash_low <= c < clash_high
+                ]
+                if selected:
+                    right = sum(1 for r in selected if r[2] == r[0])
+                    cells.append(f"{right}/{len(selected)} {100 * right / len(selected):.0f}%")
+                else:
+                    cells.append("—")
+            print(f"    {name:<10} {cells[0]:>14} {cells[1]:>14} {cells[2]:>16}")
 
     if args.table:
         print(f"\n  {'truth':>5}  {'time':>14}  {'predicted':>9}  {'as':>4}")

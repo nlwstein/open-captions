@@ -714,8 +714,11 @@ reading "manager.").
   of two seconds or more**, ranging 26–65% between sessions, with only 53 of 7,078 turns shorter
   than the diarizer's step — so unlike AMI, the flat figure is not a resolution artefact. There the
   explanation is the room: the same conversation, same reference, same model, run on a mix of the
-  four close-talk headsets, finds exactly four clusters in a clean one-to-one and scores 58%/68%. A
-  colour that is right half the time on the turns someone would read is worse than no colour, so
+  four close-talk headsets, finds exactly four clusters in a clean one-to-one and scores 58%/68%.
+  Splitting length and overlap together prices the two causes — on turns that are **both** ≥ 2 s and
+  uncontested, DiPCo scores **54% against AMI's 72%**, so the room is worth about eighteen points,
+  while two thirds of DiPCo's turns have someone talking over them and those cost about twelve more.
+  A colour that is right half the time on the turns someone would read is worse than no colour, so
   **speaker identity is not shippable on the strength of the AMI result**, and the honest
   alternatives are showing turn changes without claiming who, or treating diarization as the feature
   to solve first. See [ENGINES.md](ENGINES.md); `Scripts/diarization_score.py`,

@@ -244,10 +244,31 @@ unusually hard.
   all**, and every turn falling there scores as wrong by construction — worth knowing before reading
   the 38% as pure confusion.
 
-**Overlap is real here and AMI barely has any** — measured as the share of speaking time with more
-than one voice active, DiPCo runs 11–37% (pooled 28%) against 5–8% in the two AMI meetings. It is the
-most likely single cause and it does not explain the spread on its own: S10 has 28% overlap and
-scores 65%, S07 has 33% and scores 26%. Depth and duration of overlap were not separated.
+**Overlap and the room both cost, and only a cross-tab separates them.** Either breakdown on its own
+misleads: length alone flatters a meeting full of half-second backchannels, and overlap alone
+flatters one that is mostly long turn-taking. Holding both fixed is the comparison that travels
+between corpora — `diarization_score.py --cross`:
+
+| | clear (< 10% clashed) | mixed (10–50%) | contested (≥ 50%) |
+|---|---|---|---|
+| DiPCo, < 2 s | 101/302 — 33% | 149/376 — 40% | 946/3,325 — 28% |
+| DiPCo, ≥ 2 s | 285/523 — **54%** | 613/1,097 — 56% | 615/1,455 — **42%** |
+| AMI, ≥ 2 s | 419/580 — **72%** | 47/72 — 65% | 5/20 — 25% |
+
+Two readings come out of it and both are needed.
+
+- **Overlap costs about twelve points.** On DiPCo turns of two seconds or more, uncontested ones
+  score 54% against 42% for majority-contested ones. And it is the normal condition there, not an
+  edge case: 68% of DiPCo's turns are majority-contested, against 40% and 58% in the two AMI
+  meetings. The corpus exists to study speech *separation* — that is the Interspeech paper's subject
+  — and the audio does what it says it does.
+- **The room costs about eighteen.** On turns that are both long (≥ 2 s) *and* uncontested (< 10%
+  clashed) — the fairest comparison available, and the one the AMI result rested on — DiPCo scores
+  **54% against AMI's 72%**. Same measurement, same diarizer, turns where nothing else is competing
+  for the microphone, and the room still gives up eighteen points.
+
+The AMI contested cell (5/20) is twenty turns and carries no weight; it is in the table for shape,
+not for use. The DiPCo and AMI cells beside it are 500–1,500 turns each.
 
 **Speed is not the constraint.** All ten sessions — 320 minutes of audio — diarized in 132 seconds
 end to end, about **145× realtime**, consistent with AMI's 146–167×. The whole-corpus run costs less
@@ -261,7 +282,10 @@ supported shipping speaker colours. **The DiPCo result does not.** The honest op
 speaker change without claiming identity — a break or a bullet rather than a name or a colour — or to
 treat diarization as the feature to get right before the UI, which is what the measurement now
 supports. Nothing here says the approach is hopeless; the close-talk row says the model is fine and
-the room is the problem, and room robustness is exactly what a phone on a table needs.
+the room is the problem, and room robustness is exactly what a phone on a table needs. Two things
+make the target harder still, and neither was measured on a phone: DiPCo's best array is seven
+microphones at a fixed position on a table, and **two thirds of the turns in that setting have
+someone else talking over them**, which no diarizer can resolve on its own.
 
 ## What was not measured
 
@@ -274,11 +298,15 @@ the room is the problem, and room robustness is exactly what a phone on a table 
   a single-room fluke any more, and the DiPCo spread (26–65% at ≥ 2 s) is the honest error bar.
 - **No third corpus.** CHiME-6 (real dinner parties, OpenSLR SLR150) also fits the app's setting and
   has not been run. Its value now is as a check on DiPCo's 48%, not as the first look at a home.
-- **No separation of what makes DiPCo hard.** Overlap, reverberation, background noise and moving
-  speakers all differ from AMI at once, and the close-talk control isolates "the room" without
-  saying which part of it. If this becomes the blocking feature, that is the next thing to pull
-  apart — anechoic-versus-reverberant and overlap-free-versus-overlapped subsets of the same
-  sessions would each be cheap to build.
+- **"The room" is still a black box.** The cross-tab prices the room at eighteen points on clean,
+  long turns, but reverberation, background noise, moving speakers, table reflections and the
+  corpus's simulated-not-real dinner-party framing all differ from AMI at once and none was varied
+  on its own. That matters for the fix: a beamformer or dereverberation front end addresses some of
+  those and not others.
+- **No speech separation.** Two thirds of DiPCo's turns have someone talking over them, which is not
+  a diarization problem and is not fixable by a better diarizer — a single-stream output cannot
+  colour two simultaneous voices correctly whatever it does. Nothing here tested a separation front
+  end, so 42% is a floor on contested turns rather than a verdict on LS-EEND.
 - **No published-number comparison.** Our metric is turn attribution, not DER, so these figures
   cannot be placed beside the AMI-SDM leaderboard without a conversion that has not been written.
 - **Only the default int8 encoder.** The CLI exposes `--encoder-precision int8-v2` and `--dual-decode-arbitration`;
