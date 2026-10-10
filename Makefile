@@ -80,8 +80,14 @@ stream: $(HARNESS)
 ## The same pipeline off a recording instead of the microphone — how it is tested without asking
 ## anyone to talk into a laptop. `make stream-file FIXTURE=family-dinner SPEED=4` to hurry it.
 ## SPEED is a wall-clock multiplier, so leave it at 1 to judge the latency honestly.
+## FIXTURE is a fixture name, or any path to any wav: the real DiPCo recordings are far better
+## material than the synthetic fixtures, which are text-to-speech of an imaginary family.
+## SECONDS stops after that much audio — a full DiPCo session is 25 minutes.
+##   make stream-file FIXTURE=~/Downloads/live-caption-samples/S02-seven-channel-mix.wav SECONDS=90
+STREAM_AUDIO = $(if $(findstring /,$(FIXTURE)),$(FIXTURE),Fixtures/audio/$(FIXTURE).wav)
+STREAM_LIMIT = $(if $(SECONDS),--max-seconds $(SECONDS),)
 stream-file: $(HARNESS)
-	$(HARNESS) stream --from-file Fixtures/audio/$(FIXTURE).wav --speed $(or $(SPEED),1)
+	$(HARNESS) stream --from-file "$(STREAM_AUDIO)" --speed $(or $(SPEED),1) $(STREAM_LIMIT)
 
 # ---------------------------------------------------------------------------------------------
 # Building and fixtures
