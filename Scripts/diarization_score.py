@@ -42,6 +42,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import re
 
@@ -133,8 +134,26 @@ def clip_start() -> float:
 
 
 def load_prediction(path: pathlib.Path) -> list[tuple[str, float, float]]:
+    """`(cluster, start, end)` per segment, from either output shape the CLI produces.
+
+    `lseend` prints "Speaker 0: 0.10s - 21.80s" and `sortformer --output` writes JSON, and the two
+    are compared against each other often enough that accepting both here is worth more than an
+    adapter script. JSON is detected by content, not by extension, because the text form has been
+    saved under `.json` names and back.
+    """
+    text = path.read_text()
+    if text.lstrip().startswith("{"):
+        payload = json.loads(text)
+        segments = [
+            (f"s{segment['speakerIndex']}", float(segment["startTimeSeconds"]), float(segment["endTimeSeconds"]))
+            for segment in payload["segments"]
+        ]
+        if not segments:
+            raise SystemExit(f"{path} parsed as sortformer JSON but holds no segments")
+        return segments
+
     segments = []
-    for line in path.read_text().splitlines():
+    for line in text.splitlines():
         match = SEGMENT.search(line)
         if match:
             segments.append((f"s{match.group(1)}", float(match.group(2)), float(match.group(3))))
@@ -250,6 +269,43 @@ def best_mapping(
     return mapping, hits, len(truth)
 
 
+def stability(
+    truth: list[tuple[float, float, str]],
+    prediction: list[tuple[str, float, float]],
+    windows: int,
+) -> tuple[dict[str, str], list[tuple[float, float, int, dict[str, str], int, int]]]:
+    """Whether a colour means the same person from the start of a recording to the end.
+
+    The headline score answers "was this turn attributed to the right person", and it does so by
+    choosing one relabelling for the whole file. That is exactly the thing a reader cannot do: they
+    see the colours turn by turn, and if cluster `s2` is the mother in the first ten minutes and the
+    uncle in the last ten, the headline score can be high while the app is unusable. This splits the
+    recording into equal windows, solves the same mapping independently in each, and counts how
+    often a window agrees with the file-wide answer.
+
+    Windows are cut on time, not on turns, so a quiet stretch is not silently given the same weight
+    as a busy one. A window with too few turns to decide anything is reported as such rather than
+    counted as agreement — silence is not evidence of constancy.
+    """
+    floor, ceiling = min(t[0] for t in truth), max(t[1] for t in truth)
+    width = (ceiling - floor) / windows if windows else 0.0
+    whole, _, _ = best_mapping(truth, prediction, strict=True)
+
+    rows: list[tuple[float, float, int, dict[str, str], int, int]] = []
+    for index in range(windows):
+        start = floor + index * width
+        end = start + width
+        subset = [t for t in truth if start <= (t[0] + t[1]) / 2 < end]
+        if len(subset) < 8:
+            # Too few turns to identify anyone; the honest answer is "undecided", not "agrees".
+            rows.append((start, end, len(subset), {}, -1, -1))
+            continue
+        mapping, _, _ = best_mapping(subset, prediction, strict=True)
+        agree = sum(1 for cluster, speaker in mapping.items() if whole.get(cluster) == speaker)
+        rows.append((start, end, len(subset), mapping, agree, len(mapping)))
+    return whole, rows
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("fixture", help="Fixture name, e.g. ami-meeting.")
@@ -279,6 +335,14 @@ def main() -> int:
         help="Accuracy by turn length AND overlap together. Length alone flatters a meeting "
         "full of short backchannels and overlap alone flatters one full of long turn-taking; "
         "holding both fixed is the only comparison that travels between corpora.",
+    )
+    parser.add_argument(
+        "--stability",
+        type=int, default=0, metavar="WINDOWS",
+        help="Split the recording into this many equal time windows and check whether each "
+        "window's cluster→speaker mapping matches the file-wide one. This is the colour-"
+        "constancy question: a high headline score with a low stability score means the "
+        "right people were found but the colours moved.",
     )
     args = parser.parse_args()
 
@@ -342,6 +406,26 @@ def main() -> int:
         if edge is None:
             break
         previous = edge
+
+    if args.stability:
+        whole, windows = stability(truth, prediction, args.stability)
+        print(f"\n  colour constancy across {args.stability} equal time windows")
+        decided = [w for w in windows if w[4] >= 0]
+        agree = sum(1 for w in decided if w[4] == w[5])
+        for start, end, count, mapping_w, hit, size in windows:
+            if hit < 0:
+                print(f"    {start / 60:5.1f}–{end / 60:5.1f}m  {count:4d} turns  too few to decide")
+                continue
+            mark = "same" if hit == size else f"MOVED ({hit}/{size} match)"
+            detail = "" if hit == size else "  now: " + ", ".join(
+                f"{c}→{s}" for c, s in sorted(mapping_w.items()) if whole.get(c) != s
+            )
+            print(f"    {start / 60:5.1f}–{end / 60:5.1f}m  {count:4d} turns  {mark}{detail}")
+        if decided:
+            print(
+                f"    windows matching the file-wide mapping: "
+                f"{agree}/{len(decided)} — {100 * agree / len(decided):.0f}%"
+            )
 
     # Printed only when the recording has overlap at all, so the single-speaker fixtures do not
     # grow a section that says "none".
