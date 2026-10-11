@@ -63,7 +63,13 @@ struct SettingsView: View {
                 } header: {
                     Text("Listening")
                 } footer: {
-                    Text("Changes apply from the next conversation. Voice isolation is tuned for one person close to the phone, and may drop other people at the table.")
+                    VStack(alignment: .leading, spacing: 8) {
+                        if !model.modelsDownloaded {
+                            Text("\(store.settings.engine.displayName) is not on this phone yet: it downloads, about \(model.downloadSize), when you close settings. Use Wi-Fi.")
+                                .foregroundStyle(.orange)
+                        }
+                        Text("Changes apply from the next conversation. Voice isolation is tuned for one person close to the phone, and may drop other people at the table.")
+                    }
                 }
 
                 Section("Conversations") {

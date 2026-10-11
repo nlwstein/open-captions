@@ -14,6 +14,10 @@ import Foundation
 ///     -screen <name>        open on live | history | settings | latest (newest transcript)
 ///     -simple <0|1>  -text-size <pt>  -theme <name>  -engine <name>   override a setting
 ///     -orientation <portrait|landscape>   rotate the window
+///     -setup <0|1>          show the first-run screens, or skip them. Default: show them until
+///                           finished once, except with -autostart
+///     -fake-download <s>    with -replay: act out a first-run download taking this long
+///     -fake-download-fail   ...and drop the connection partway through
 public struct LaunchOptions: Equatable, Sendable {
     public enum Screen: String, Sendable { case live, history, settings, latest }
 
@@ -30,6 +34,9 @@ public struct LaunchOptions: Equatable, Sendable {
     public var engine: EngineChoice?
     /// Rotate the window on launch. The simulator has no command-line way to rotate.
     public var landscape: Bool?
+    public var setup: Bool?
+    public var fakeDownload: Double?
+    public var fakeDownloadFails = false
 
     public init() {}
 
@@ -55,6 +62,9 @@ public struct LaunchOptions: Equatable, Sendable {
             case "-theme": theme = value().flatMap(AppSettings.Theme.init(rawValue:))
             case "-engine": engine = value().flatMap(EngineChoice.init(rawValue:))
             case "-orientation": landscape = value().map { $0 == "landscape" }
+            case "-setup": setup = value().map { $0 == "1" || $0 == "true" }
+            case "-fake-download": fakeDownload = value().flatMap(Double.init)
+            case "-fake-download-fail": fakeDownloadFails = true
             default: break
             }
             index = arguments.index(after: index)
@@ -62,6 +72,12 @@ public struct LaunchOptions: Equatable, Sendable {
     }
 
     public static var current: LaunchOptions { LaunchOptions(arguments: ProcessInfo.processInfo.arguments) }
+
+    /// Whether to open on the first-run screens, given whether they have been finished before.
+    /// A scripted session skips them unless asked, so `-autostart` still starts.
+    public func showsSetup(setupDone: Bool) -> Bool {
+        setup ?? (!setupDone && !autostart)
+    }
 
     /// Applies the setting overrides; the rest are read by whoever needs them.
     public func apply(to settings: inout AppSettings) {

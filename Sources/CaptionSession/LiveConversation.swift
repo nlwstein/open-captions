@@ -13,8 +13,8 @@ public final class LiveConversation {
 
     public enum Phase: Equatable, Sendable {
         case idle
-        /// Loading models. The string is what the engine says it is doing.
-        case preparing(String)
+        /// Loading models, or downloading them the first time. See `progress`.
+        case preparing
         case listening
         /// Stop was pressed; the engine is flushing its last words.
         case finishing
@@ -44,6 +44,9 @@ public final class LiveConversation {
     public private(set) var status = CaptionerStatus()
     /// The conversation being captioned, or the one that just ended.
     public private(set) var session: SavedSession?
+    /// How far the engine being loaded has got. Kept up to date even when loading quietly, so a
+    /// download that started in the background shows up as soon as someone looks.
+    public private(set) var progress: ModelProgress?
     /// Whether an engine is loaded and waiting, so Start is instant.
     public private(set) var isWarm = false
 
@@ -87,34 +90,66 @@ public final class LiveConversation {
     public func warmUp(quietly: Bool = false) async {
         let config = configuration()
         if let warm, warm.key == config.engineKey { return }
-        if !quietly, !isRunning { phase = .preparing("Getting ready…") }
+        if !quietly, !isRunning { phase = .preparing }
         if let warming {
             await warming.value
             if let warm, warm.key == config.engineKey {
-                if case .preparing = phase { phase = .idle }
+                if phase == .preparing { phase = .idle }
                 return
             }
         }
         warm = nil
         isWarm = false
+        progress = nil
         let engine = config.makeEngine()
         let task = Task { @MainActor in
+            // Through a stream, so reports from FluidAudio's queues arrive in the order sent.
+            let (reports, sink) = AsyncStream<ModelProgress>.makeStream()
+            let listener = Task { @MainActor in
+                for await report in reports { self.apply(report) }
+            }
+            defer { sink.finish() }
             do {
-                try await engine.prepare { message in
-                    Task { @MainActor in
-                        if case .preparing = self.phase { self.phase = .preparing(message) }
-                    }
-                }
+                try await engine.prepare { sink.yield($0) }
+                sink.finish()
+                await listener.value
+                self.progress = .ready
                 self.warm = (config.engineKey, engine)
                 self.isWarm = true
-                if case .preparing = self.phase { self.phase = .idle }
+                if self.phase == .preparing { self.phase = .idle }
             } catch {
-                self.phase = .failed("Could not load the speech model. \(error.localizedDescription)")
+                self.progress = nil
+                self.phase = .failed(Self.describeLoadFailure(error))
             }
         }
         warming = task
         await task.value
         warming = nil
+    }
+
+    /// Takes the step from the newest report, but never moves the bar backwards: FluidAudio's own
+    /// fraction starts again from part-way when it moves from downloading a model to compiling it.
+    private func apply(_ report: ModelProgress) {
+        guard progress?.step != .ready else { return }
+        var next = report
+        next.fraction = max(report.fraction, progress?.fraction ?? 0)
+        progress = next
+    }
+
+    /// What to tell someone whose models did not load. Almost always the first download, on a
+    /// connection that dropped; FluidAudio passes URLSession's errors through, sometimes wrapped.
+    nonisolated static func describeLoadFailure(_ error: Error) -> String {
+        var current: NSError? = error as NSError
+        while let error = current {
+            if error.domain == NSURLErrorDomain {
+                return "The download stopped. Check the internet connection, then try again."
+            }
+            if error.domain == NSCocoaErrorDomain, error.code == NSFileWriteOutOfSpaceError {
+                return "There is not enough space on this phone for the speech models."
+            }
+            current = error.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return "Could not load the speech model. \(error.localizedDescription)"
     }
 
     // MARK: - Running

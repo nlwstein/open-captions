@@ -209,7 +209,7 @@ struct Stream: AsyncParsableCommand {
 
         if !plain { renderer.enter() }
         renderer.note("loading models… this is slow the first time")
-        try await captioner.prepare { message in renderer.note(message) }
+        try await captioner.prepare { progress in renderer.note(progress.description) }
 
         if !enroll.isEmpty {
             renderer.note("enrolling \(enroll.count) speaker(s)…")

@@ -141,12 +141,18 @@ struct LiveScreen: View {
         case .finishing:
             Label("Finishing", systemImage: "hourglass").font(font).foregroundStyle(style.secondaryText)
         case .preparing:
-            Label("Getting ready", systemImage: "hourglass").font(font).foregroundStyle(style.secondaryText)
+            Label(preparingText, systemImage: "hourglass").font(font).foregroundStyle(style.secondaryText)
         case .idle, .failed:
             Text(simple ? "Captions" : "Not listening")
                 .font(font)
                 .foregroundStyle(style.secondaryText)
         }
+    }
+
+    /// "Getting ready", or how far a download has got when there is one.
+    private var preparingText: String {
+        guard let progress = live.progress, progress.step == .downloading else { return "Getting ready" }
+        return "Downloading \(progress.percent)%"
     }
 
     private var statusLine: String {
@@ -165,7 +171,10 @@ struct LiveScreen: View {
         if case .failed(let message) = live.phase, lines.isEmpty {
             prompt(message, systemImage: "exclamationmark.triangle")
         } else if lines.isEmpty {
-            if live.isRunning {
+            if live.phase == .preparing, live.progress?.step == .downloading {
+                prompt("Downloading the speech models. Keep Captions open until this finishes.",
+                       systemImage: "arrow.down.circle")
+            } else if live.isRunning {
                 prompt("Waiting for someone to speak…", systemImage: "ear")
             } else {
                 prompt("Press Start, and what people say will appear here.", systemImage: "captions.bubble")
@@ -257,7 +266,7 @@ struct LiveScreen: View {
     private var mainButtonState: (String, String, Color, Bool) {
         switch live.phase {
         case .idle, .failed: return ("Start", "mic.fill", .green, true)
-        case .preparing: return ("Getting ready…", "hourglass", .gray, false)
+        case .preparing: return (preparingText + "…", "hourglass", .gray, false)
         case .listening: return ("Stop", "stop.fill", .red, true)
         case .finishing: return ("Saving…", "hourglass", .gray, false)
         }

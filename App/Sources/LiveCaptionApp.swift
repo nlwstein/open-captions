@@ -29,7 +29,17 @@ struct RootView: View {
 
     var body: some View {
         @Bindable var model = model
-        NavigationStack(path: $model.path) {
+        if model.showingSetup {
+            SetupView()
+                .captionTheme(model.settings)
+        } else {
+            main
+        }
+    }
+
+    private var main: some View {
+        @Bindable var model = model
+        return NavigationStack(path: $model.path) {
             LiveScreen(assistive: assistive)
                 .navigationDestination(for: AppModel.Route.self) { route in
                     switch route {
@@ -41,7 +51,8 @@ struct RootView: View {
                 }
         }
         .captionTheme(model.settings)
-        .sheet(isPresented: assistive ? .constant(false) : $model.showingSettings) {
+        .sheet(isPresented: assistive ? .constant(false) : $model.showingSettings,
+               onDismiss: model.settingsClosed) {
             SettingsView()
                 .environment(model)
                 .captionTheme(model.settings)

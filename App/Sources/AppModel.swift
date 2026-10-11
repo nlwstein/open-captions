@@ -19,6 +19,10 @@ final class AppModel {
     /// Navigation for the main window, so a launch argument can open any screen.
     var path: [Route] = []
     var showingSettings = false
+    /// The first-run screens: download the models, ask for the microphone.
+    private(set) var showingSetup = false
+    private let fakeDownload = FakeDownloadState()
+
     /// Launch arguments act once, even if a second scene (Assistive Access) asks again.
     private var launched = false
 
@@ -42,6 +46,8 @@ final class AppModel {
             store.deleteAll()
         }
         launch.apply(to: &settingsStore.settings)
+        showingSetup = launch.showsSetup(setupDone: settingsStore.settings.setupDone)
+        fakeDownload.failuresLeft = launch.fakeDownloadFails ? 1 : 0
 
         live = LiveConversation(store: store) { [unowned self] in self.configuration() }
         if settings.keepDays > 0 { store.prune(olderThanDays: settings.keepDays) }
@@ -54,8 +60,13 @@ final class AppModel {
         let launch = self.launch
         if let replay = launch.replay {
             let script = (try? ReplayScript.load(replay)) ?? ReplayScript(turns: [])
+            let fake = launch.fakeDownload.map { seconds in (seconds, fakeDownload) }
             return .init(engineKey: "replay:\(replay.path)", engineName: "replay",
-                         makeEngine: { ReplayEngine(script: script) },
+                         makeEngine: {
+                             ReplayEngine(script: script, download: fake.flatMap { seconds, state in
+                                 state.next(seconds: seconds)
+                             })
+                         },
                          makeSource: {
                              ClockAudioSource(speed: launch.speed,
                                               limitSeconds: launch.maxSeconds ?? script.duration + 1)
@@ -90,9 +101,37 @@ final class AppModel {
         }
         if launch.autostart {
             await start()
-        } else {
+        } else if !showingSetup {
+            // Not during setup: there, the download waits until someone says yes to it.
             await live.warmUp()
         }
+    }
+
+    /// Whether the models the settings call for are already on the phone.
+    var modelsDownloaded: Bool {
+        if launch.replay != nil { return launch.fakeDownload == nil || fakeDownload.done }
+        return ModelCache.isDownloaded(settings.engine.variant)
+    }
+
+    /// Roughly how much the first download is, for telling people before it starts.
+    var downloadSize: String {
+        let sizes = ModelCache.downloadMegabytes(for: settings.engine.variant)
+        // One decimal place: "1.1 GB" reads as an estimate, "1.06 GB" as a promise.
+        let gigabytes = Double(sizes.recogniser + sizes.diarizer) / 1000
+        return gigabytes.formatted(.number.precision(.fractionLength(1))) + " GB"
+    }
+
+    /// Loads the engine settings now call for, so a change of model downloads while someone is
+    /// looking rather than when they next press Start.
+    func settingsClosed() {
+        guard !live.isRunning else { return }
+        Task { await live.warmUp() }
+    }
+
+    func finishSetup() {
+        settings.setupDone = true
+        showingSetup = false
+        Task { await live.warmUp() }
     }
 
     func start() async {
@@ -144,5 +183,34 @@ final class AppModel {
     /// Keeps the screen on while captioning, if the settings ask for it.
     func updateIdleTimer() {
         UIApplication.shared.isIdleTimerDisabled = settings.keepScreenAwake && live.isRunning
+    }
+}
+
+
+/// A `-fake-download` that fails the first time if asked to, then succeeds, then is not needed
+/// again — the way a real one goes when the connection drops once.
+private final class FakeDownloadState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _failuresLeft = 0
+    private var _done = false
+
+    var failuresLeft: Int {
+        get { lock.withLock { _failuresLeft } }
+        set { lock.withLock { _failuresLeft = newValue } }
+    }
+
+    var done: Bool { lock.withLock { _done } }
+
+    /// The download the next engine acts out, or nil once one has finished.
+    func next(seconds: Double) -> ReplayEngine.SimulatedDownload? {
+        lock.withLock {
+            if _done { return nil }
+            if _failuresLeft > 0 {
+                _failuresLeft -= 1
+                return .init(seconds: seconds, fails: true)
+            }
+            _done = true
+            return .init(seconds: seconds)
+        }
     }
 }

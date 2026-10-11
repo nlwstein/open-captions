@@ -8,7 +8,7 @@ import Foundation
 /// pace with no models at all — which is how the screens are built and checked in the simulator,
 /// where the real models run on the CPU and may not keep up.
 public protocol CaptionEngine: AnyObject, Sendable {
-    func prepare(progress: (@Sendable (String) -> Void)?) async throws
+    func prepare(progress: (@Sendable (ModelProgress) -> Void)?) async throws
     func run(source: LiveAudioSource,
              onUpdate: @escaping @Sendable (CaptionerUpdate) -> Void) async throws
 }
@@ -114,13 +114,39 @@ public struct ReplayScript: Sendable, Equatable {
 /// the way the real engine does: the session ends when the source ends, and a final update follows.
 public final class ReplayEngine: CaptionEngine, @unchecked Sendable {
     private let script: ReplayScript
+    private let download: SimulatedDownload?
 
-    public init(script: ReplayScript) {
-        self.script = script
+    /// A first-run download acted out, so the setup screens can be seen without fetching a
+    /// gigabyte: progress over `seconds`, then a moment of loading.
+    public struct SimulatedDownload: Sendable {
+        public var seconds: Double
+        /// Drop the connection partway through, as a train going into a tunnel would.
+        public var fails: Bool
+
+        public init(seconds: Double, fails: Bool = false) {
+            self.seconds = seconds
+            self.fails = fails
+        }
     }
 
-    public func prepare(progress: (@Sendable (String) -> Void)?) async throws {
-        progress?("ready")
+    public init(script: ReplayScript, download: SimulatedDownload? = nil) {
+        self.script = script
+        self.download = download
+    }
+
+    public func prepare(progress: (@Sendable (ModelProgress) -> Void)?) async throws {
+        if let download {
+            let steps = max(Int(download.seconds * 10), 1)
+            for step in 0...steps {
+                let fraction = 0.9 * Double(step) / Double(steps)
+                if download.fails, fraction >= 0.4 { throw URLError(.networkConnectionLost) }
+                progress?(ModelProgress(step: .downloading, fraction: fraction, model: "replay"))
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            progress?(ModelProgress(step: .loading, fraction: 0.95, model: "replay"))
+            try await Task.sleep(for: .seconds(1.5))
+        }
+        progress?(.ready)
     }
 
     public func run(source: LiveAudioSource,

@@ -42,6 +42,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// change, which is the failure that matters here.
     public var supporterPIN = ""
 
+    /// The first-run screens have been through: models downloaded, microphone asked for.
+    public var setupDone = false
+
     public init() {}
 
     // Decoded field by field with defaults, so a settings file written by an older build still
@@ -61,6 +64,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         keepDays = (try? c.decode(Int.self, forKey: .keepDays)) ?? d.keepDays
         keepScreenAwake = (try? c.decode(Bool.self, forKey: .keepScreenAwake)) ?? d.keepScreenAwake
         supporterPIN = (try? c.decode(String.self, forKey: .supporterPIN)) ?? d.supporterPIN
+        setupDone = (try? c.decode(Bool.self, forKey: .setupDone)) ?? d.setupDone
     }
 
     /// Text sizes offered by the slider, in points.

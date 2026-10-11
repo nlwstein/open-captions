@@ -340,16 +340,33 @@ public final class StreamingCaptioner: @unchecked Sendable {
         self.diarizer = SortformerDiarizer(config: options.sortformerConfig)
     }
 
-    /// Downloads models if needed and loads them. Cold start is tens of seconds the first time.
-    public func prepare(progress: (@Sendable (String) -> Void)? = nil) async throws {
-        progress?("loading \(options.asrVariant.displayName)…")
-        try await asr.loadModels()
+    /// Downloads models if needed and loads them. Cold start is tens of seconds the first time,
+    /// and the first download is around a gigabyte; `progress` hears about both, at most once per
+    /// whole percent.
+    public func prepare(progress: (@Sendable (ModelProgress) -> Void)? = nil) async throws {
+        let report = ProgressCoalescer(progress)
+        let sizes = ModelCache.downloadMegabytes(for: options.asrVariant)
+        let asrShare = Double(sizes.recogniser) / Double(sizes.recogniser + sizes.diarizer)
 
-        progress?("loading Sortformer…")
-        let models = try await SortformerModels.loadFromHuggingFace(config: options.sortformerConfig)
+        let asrName = options.asrVariant.displayName
+        report(ModelProgress(step: .loading, fraction: 0, model: asrName))
+        let asrHandler: ProgressHandler = { report(ModelProgress($0, model: asrName, offset: 0, span: asrShare)) }
+        if let nemotronAsr {
+            try await nemotronAsr.loadModels(to: nil, configuration: nil, progressHandler: asrHandler)
+        } else if let unifiedAsr {
+            try await unifiedAsr.loadModels(to: nil, configuration: nil, progressHandler: asrHandler)
+        } else {
+            try await asr.loadModels()
+        }
+
+        // No report of its own here: FluidAudio's first one says whether this is a download or
+        // only a load, and saying "loading" first would be wrong for a second or two.
+        let models = try await SortformerModels.loadFromHuggingFace(
+            config: options.sortformerConfig,
+            progressHandler: { report(ModelProgress($0, model: "Sortformer", offset: asrShare, span: 1 - asrShare)) })
         diarizer.initialize(models: models)
 
-        progress?("ready")
+        report(.ready)
     }
 
     /// A speaker the diarizer has been introduced to, and the slot it settled in.
@@ -826,5 +843,27 @@ public final class StreamingCaptioner: @unchecked Sendable {
             channel[0].update(from: base, count: samples.count)
         }
         return buffer
+    }
+}
+
+/// Passes on a progress report only when it says something new: a different step or model, or
+/// another whole percent. FluidAudio reports per chunk received, from whatever queue it is on.
+private final class ProgressCoalescer: @unchecked Sendable {
+    private let handler: (@Sendable (ModelProgress) -> Void)?
+    private let lock = NSLock()
+    private var last: ModelProgress?
+
+    init(_ handler: (@Sendable (ModelProgress) -> Void)?) {
+        self.handler = handler
+    }
+
+    func callAsFunction(_ progress: ModelProgress) {
+        guard let handler else { return }
+        lock.lock()
+        let new = last.map { $0.step != progress.step || $0.model != progress.model
+            || $0.percent != progress.percent } ?? true
+        if new { last = progress }
+        lock.unlock()
+        if new { handler(progress) }
     }
 }

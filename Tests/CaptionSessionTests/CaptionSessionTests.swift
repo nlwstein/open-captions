@@ -237,3 +237,67 @@ final class LiveConversationTests: XCTestCase {
         XCTAssertFalse(live.turns.contains(where: \.isOpen))
     }
 }
+
+@MainActor
+final class FirstRunTests: XCTestCase {
+
+    private func conversation(_ download: ReplayEngine.SimulatedDownload) -> (LiveConversation, URL) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("setup-\(UUID())")
+        let live = LiveConversation(store: TranscriptStore(directory: root.appendingPathComponent("t")),
+                                    diagnosticsDirectory: root.appendingPathComponent("d")) {
+            LiveConversation.Configuration(
+                engineKey: "replay", engineName: "replay",
+                makeEngine: { ReplayEngine(script: ReplayScript(turns: []), download: download) },
+                makeSource: { ClockAudioSource(speed: 50, limitSeconds: 1) })
+        }
+        return (live, root)
+    }
+
+    func testADroppedDownloadSaysSoInPlainWords() async {
+        let (live, root) = conversation(.init(seconds: 0.5, fails: true))
+        defer { try? FileManager.default.removeItem(at: root) }
+        await live.warmUp()
+        XCTAssertFalse(live.isWarm)
+        XCTAssertNil(live.progress)
+        XCTAssertEqual(live.phase,
+                       .failed("The download stopped. Check the internet connection, then try again."))
+    }
+
+    func testACompletedDownloadEndsReady() async {
+        let (live, root) = conversation(.init(seconds: 0.3))
+        defer { try? FileManager.default.removeItem(at: root) }
+        await live.warmUp()
+        XCTAssertTrue(live.isWarm)
+        XCTAssertEqual(live.progress, .ready)
+        XCTAssertEqual(live.phase, .idle)
+    }
+
+    func testWrappedNetworkErrorsAreRecognised() {
+        let wrapped = NSError(domain: "FluidAudio", code: 1,
+                              userInfo: [NSUnderlyingErrorKey: URLError(.timedOut) as NSError])
+        XCTAssertTrue(LiveConversation.describeLoadFailure(wrapped).hasPrefix("The download stopped"))
+        XCTAssertTrue(LiveConversation.describeLoadFailure(CocoaError(.fileReadCorruptFile))
+            .hasPrefix("Could not load"))
+    }
+
+    func testSetupShowsUntilDoneExceptForScriptedRuns() {
+        XCTAssertTrue(LaunchOptions(arguments: []).showsSetup(setupDone: false))
+        XCTAssertFalse(LaunchOptions(arguments: []).showsSetup(setupDone: true))
+        XCTAssertFalse(LaunchOptions(arguments: ["-autostart"]).showsSetup(setupDone: false))
+        XCTAssertTrue(LaunchOptions(arguments: ["-autostart", "-setup", "1"]).showsSetup(setupDone: true))
+        let fake = LaunchOptions(arguments: ["-fake-download", "8", "-fake-download-fail"])
+        XCTAssertEqual(fake.fakeDownload, 8)
+        XCTAssertTrue(fake.fakeDownloadFails)
+    }
+
+    func testSettingsFromBeforeSetupExistedStartWithSetup() throws {
+        let old = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"textSize": 40}"#.utf8))
+        XCTAssertFalse(old.setupDone)
+    }
+
+    func testProgressIsClampedAndReadsAsPercent() {
+        let progress = ModelProgress(step: .downloading, fraction: 0.456, model: "x")
+        XCTAssertEqual(progress.percent, 45)
+        XCTAssertEqual(ModelProgress(step: .loading, fraction: 1.7, model: "x").fraction, 1)
+    }
+}
