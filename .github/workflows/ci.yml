@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Bump to force the punctuation model to rebuild without touching the scripts.
+  PUNCTUATION_CACHE_VERSION: v1
+
+jobs:
+  # Builds the punctuation model once (Scripts/make-punctuation-model.sh) and caches it, so the
+  # tests run against the real model instead of skipping, and the app has the resources it bundles.
+  # A cache hit makes this job a few seconds; a miss is a ~200 MB download plus a uv Python stack.
+  punctuation-model:
+    name: Punctuation model
+    runs-on: macos-26
+    timeout-minutes: 30
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: key
+        run: echo "key=punctuation-${{ env.PUNCTUATION_CACHE_VERSION }}-${{ runner.os }}-${{ hashFiles('Scripts/make-punctuation-model.sh', 'Scripts/punctuation_model.py') }}" >> "$GITHUB_OUTPUT"
+      - id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .models/punctuation
+          key: ${{ steps.key.outputs.key }}
+          lookup-only: true
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v6
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: Scripts/make-punctuation-model.sh
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .models/punctuation
+          key: ${{ steps.key.outputs.key }}
+
+  test:
+    name: swift test
+    needs: punctuation-model
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # testThisRepositorysHistoryIsConventional reads the whole git log.
+          fetch-depth: 0
+      - name: Select Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+          swift --version
+      - uses: actions/cache/restore@v4
+        with:
+          path: .models/punctuation
+          key: ${{ needs.punctuation-model.outputs.key }}
+          fail-on-cache-miss: true
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+      - name: swift test
+        run: swift test
+
+  app:
+    name: iOS app (simulator build)
+    needs: punctuation-model
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The app's changelog build phase writes the git history into the bundle.
+          fetch-depth: 0
+      - name: Select Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - uses: actions/cache/restore@v4
+        with:
+          path: .models/punctuation
+          key: ${{ needs.punctuation-model.outputs.key }}
+          fail-on-cache-miss: true
+      - name: Install xcodegen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Generate project
+        run: cd App && xcodegen generate --quiet
+      - uses: actions/cache@v4
+        with:
+          path: .sim/dd/SourcePackages
+          key: app-spm-${{ runner.os }}-${{ hashFiles('Package.resolved', 'App/project.yml') }}
+          restore-keys: app-spm-${{ runner.os }}-
+      - name: Build for the iOS Simulator
+        run: |
+          status=0
+          xcodebuild -project App/OpenCaptions.xcodeproj -scheme OpenCaptions \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath .sim/dd \
+            -skipMacroValidation -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            build > build.log 2>&1 || status=$?
+          grep -E 'error:|warning: .*App/Sources' build.log | sort -u | head -80 || true
+          tail -5 build.log
+          exit $status
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build-log
+          path: build.log
