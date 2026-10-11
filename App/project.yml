@@ -19,6 +19,11 @@ targets:
       - path: Resources
       - path: ../THIRD_PARTY_NOTICES.md
         buildPhase: resources
+    postBuildScripts:
+      # Into the bundle before it is signed. Not sandboxed: it reads the repository's history.
+      - name: Changelog
+        script: '"$SRCROOT/../Scripts/make-changelog.sh" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/changelog.txt"'
+        basedOnDependencyAnalysis: false
     dependencies:
       - package: LiveCaption
         product: CaptionSession
@@ -59,4 +64,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         ENABLE_PREVIEWS: YES
+        # The changelog script reads git history from outside the build directory.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

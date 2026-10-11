@@ -91,7 +91,28 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    NavigationLink("Acknowledgements") { AcknowledgementsView() }
+                    if let dedication = About.dedication {
+                        NavigationLink {
+                            DedicationView(text: dedication)
+                        } label: {
+                            Label("Dedication", systemImage: "heart")
+                        }
+                        .accessibilityIdentifier("dedicationLink")
+                    }
+                    NavigationLink {
+                        ChangelogView(changelog: About.changelog)
+                    } label: {
+                        Label("What's new", systemImage: "sparkles")
+                    }
+                    .accessibilityIdentifier("changelogLink")
+                    NavigationLink {
+                        AcknowledgementsView()
+                    } label: {
+                        Label("Acknowledgements", systemImage: "doc.text")
+                    }
+                    LabeledContent("Version", value: About.version)
+                } header: {
+                    Text("About")
                 } footer: {
                     Text("Everything is transcribed on this phone. Nothing is sent anywhere, and no audio is kept.")
                 }

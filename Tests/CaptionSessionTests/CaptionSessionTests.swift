@@ -301,3 +301,68 @@ final class FirstRunTests: XCTestCase {
         XCTAssertEqual(ModelProgress(step: .loading, fraction: 1.7, model: "x").fraction, 1)
     }
 }
+
+final class ChangelogTests: XCTestCase {
+
+    private func log(_ records: [(String, String, String)]) -> String {
+        records.map { "\($0.0)\u{1F}\($0.1)\u{1F}\($0.2)\u{1E}\n" }.joined()
+    }
+
+    func testReadsConventionalSubjects() {
+        let changelog = Changelog(gitLog: log([
+            ("aaaaaaa1", "2026-10-11T10:00:00-04:00", "feat(app)!: first-run setup with model download"),
+            ("bbbbbbb2", "2026-10-11T09:00:00-04:00", "fix: keep word boundaries"),
+            ("ccccccc3", "2026-10-10T09:00:00-04:00", "docs: measure on an M4"),
+            ("ddddddd4", "2026-10-10T08:00:00-04:00", "Tidy things up"),
+            ("eeeeeee5", "2026-10-09T08:00:00-04:00", "feat: iOS app shell"),
+        ]))
+        XCTAssertEqual(changelog.entries.count, 5)
+        XCTAssertEqual(changelog.entries[4].summary, "iOS app shell")
+        let first = changelog.entries[0]
+        XCTAssertEqual(first.kind, .feat)
+        XCTAssertEqual(first.scope, "app")
+        XCTAssertTrue(first.breaking)
+        XCTAssertEqual(first.summary, "First-run setup with model download")
+        XCTAssertEqual(changelog.buildCommit, "aaaaaaa")
+        XCTAssertEqual(changelog.entries[3].kind, .other)
+        XCTAssertEqual(changelog.entries[3].summary, "Tidy things up")
+    }
+
+    func testUserFacingViewHidesHousekeepingAndGroupsByDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let changelog = Changelog(gitLog: log([
+            ("a", "2026-10-11T10:00:00-04:00", "fix: one"),
+            ("b", "2026-10-11T09:00:00-04:00", "feat: two"),
+            ("c", "2026-10-10T09:00:00-04:00", "chore: three"),
+        ]))
+        let shown = changelog.days(includingAll: false, calendar: calendar)
+        XCTAssertEqual(shown.count, 1)
+        XCTAssertEqual(shown[0].groups.map(\.kind), [.feat, .fix], "new things come before fixes")
+        XCTAssertEqual(changelog.days(includingAll: true, calendar: calendar).count, 2)
+    }
+
+    func testDamagedRecordsAreSkipped() {
+        let changelog = Changelog(gitLog: "garbage\u{1E}x\u{1F}not-a-date\u{1F}feat: y\u{1E}")
+        XCTAssertTrue(changelog.entries.isEmpty)
+        XCTAssertNil(changelog.buildCommit)
+    }
+
+    /// The real history, as the build script writes it: every commit should parse as one of the
+    /// conventional types, which is what keeps the in-app changelog readable.
+    func testThisRepositorysHistoryIsConventional() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("changelog-\(UUID()).txt")
+        defer { try? FileManager.default.removeItem(at: out) }
+        let script = Process()
+        script.executableURL = root.appendingPathComponent("Scripts/make-changelog.sh")
+        script.arguments = [out.path]
+        try script.run()
+        script.waitUntilExit()
+        let changelog = try XCTUnwrap(Changelog.load(out))
+        try XCTSkipIf(changelog.entries.isEmpty, "no git history here")
+        let unconventional = changelog.entries.filter { $0.kind == .other }.map(\.summary)
+        XCTAssertEqual(unconventional, [])
+    }
+}

@@ -29,6 +29,9 @@ final class AppModel {
     enum Route: Hashable {
         case history
         case transcript(UUID)
+        /// Reached from settings in use; routes too so a launch argument can open them.
+        case changelog
+        case dedication
     }
 
     var settings: AppSettings {
@@ -97,6 +100,8 @@ final class AppModel {
         case .history: path = [.history]
         case .latest: if let id = history.first?.id { path = [.history, .transcript(id)] }
         case .settings: showingSettings = true
+        case .changelog: path = [.changelog]
+        case .dedication: path = [.dedication]
         case .live, nil: break
         }
         if launch.autostart {

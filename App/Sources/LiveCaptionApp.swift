@@ -47,6 +47,10 @@ struct RootView: View {
                         HistoryView(assistive: assistive)
                     case .transcript(let id):
                         TranscriptScreen(id: id, assistive: assistive)
+                    case .changelog:
+                        ChangelogView(changelog: About.changelog)
+                    case .dedication:
+                        DedicationView(text: About.dedication ?? "Nothing written yet.")
                     }
                 }
         }
