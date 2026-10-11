@@ -7,6 +7,15 @@ speaker gets their own colour.
 Everything runs on the phone. No audio or text is sent anywhere, there is no account, and the
 app keeps working without an internet connection once it is set up.
 
+<p align="center">
+  <img src="docs/screenshots/live-light.png" width="260" alt="Live captions during a doctor's appointment, with each of three speakers named and coloured">
+  <img src="docs/screenshots/high-contrast.png" width="260" alt="The same captions in high-contrast dark mode at a larger text size">
+  <img src="docs/screenshots/ready.png" width="260" alt="The start screen: one large green Start button">
+</p>
+<p align="center">
+  <img src="docs/screenshots/landscape-dark.png" width="790" alt="Captions in landscape, dark mode, with the Stop button at the side">
+</p>
+
 ## Who it is for
 
 Open Captions is built for someone who is hard of hearing and does not want to fiddle with an
@@ -36,6 +45,14 @@ app. Think of an older relative at the dinner table, at a doctor's appointment o
   kept, from a week to until you delete them. Audio is never stored.
 - **Keeps listening with the screen locked**, and can keep the screen awake while it listens.
 
+### More screens
+
+| First run | Past conversations | A saved conversation | Settings |
+|---|---|---|---|
+| <img src="docs/screenshots/setup.png" width="190" alt="First-run screen asking to download the speech models"> | <img src="docs/screenshots/history.png" width="190" alt="List of past conversations with a search box"> | <img src="docs/screenshots/transcript.png" width="190" alt="A saved conversation, punctuated and split by speaker"> | <img src="docs/screenshots/settings.png" width="190" alt="Settings, with a live preview of the caption style"> |
+
+The screenshots are from the iOS Simulator, playing back a scripted conversation.
+
 ## Requirements
 
 - An iPhone with iOS 26 or later. iPad works too.
@@ -46,17 +63,25 @@ app. Think of an older relative at the dinner table, at a doctor's appointment o
 
 ## How well it works
 
-Open Captions uses open speech models from NVIDIA: Nemotron Speech Streaming 0.6B for the words,
-and Streaming Sortformer for telling speakers apart. Captions appear about a second behind the
-speaker.
-
-It is good in a quiet room with one or two people. It is less good across a noisy restaurant
-table or with several people talking over each other, as every captioning system is. Treat the
-captions as a help, not a record. Don't rely on them alone for anything important, such as
-medicine doses or emergency instructions.
+Captions appear about a second behind the speaker. Open Captions works well in a quiet room with
+one or two people. It is less good across a noisy restaurant table or with several people talking
+over each other, as every captioning system is. Treat the captions as a help, not a record. Don't
+rely on them alone for anything important, such as medicine doses or emergency instructions.
 
 The measurements behind these choices are in [docs/ENGINES.md](docs/ENGINES.md) and
 [docs/RESEARCH.md](docs/RESEARCH.md).
+
+## Models
+
+Every model is open and runs on the phone. The speech models are NVIDIA's, converted to Core ML
+by FluidInference and run through [FluidAudio](https://github.com/FluidInference/FluidAudio).
+
+| What it does | Model | Core ML version the app downloads | Licence |
+|---|---|---|---|
+| **Turns speech into words** (default) | [nvidia/nemotron-speech-streaming-en-0.6b](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b) | [FluidInference/nemotron-speech-streaming-en-0.6b-coreml](https://huggingface.co/FluidInference/nemotron-speech-streaming-en-0.6b-coreml) (`1120ms`) | [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/) |
+| **Tells speakers apart** | [nvidia/diar_streaming_sortformer_4spk-v2.1](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1) | [FluidInference/diar-streaming-sortformer-coreml](https://huggingface.co/FluidInference/diar-streaming-sortformer-coreml) | [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/) |
+| **Turns speech into words** (alternative, in settings) | [nvidia/parakeet-unified-en-0.6b](https://huggingface.co/nvidia/parakeet-unified-en-0.6b) | [FluidInference/parakeet-unified-en-0.6b-coreml](https://huggingface.co/FluidInference/parakeet-unified-en-0.6b-coreml) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| **Adds punctuation, capitals and sentence ends** | [1-800-BAD-CODE/punct_cap_seg_en](https://huggingface.co/1-800-BAD-CODE/punct_cap_seg_en) | Built into the app, converted by [Scripts/punctuation_model.py](Scripts/punctuation_model.py) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 
 ## Building it yourself
 
@@ -86,6 +111,13 @@ speech engines against recorded conversations, is described in [docs/RESEARCH.md
   the settings say.
 - **The internet is used once,** to download the speech models from Hugging Face. Nothing is
   uploaded.
+
+## Licence
+
+Open Captions is free to use, change and share for any noncommercial purpose, under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). You may not sell it or make money from it.
+The models and libraries it uses keep their own licences, listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Credits
 
