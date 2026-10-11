@@ -17,10 +17,13 @@ struct SettingsView: View {
                 Section {
                     Toggle("Simple mode", isOn: $store.settings.simpleMode)
                         .accessibilityIdentifier("simpleModeToggle")
+                    Toggle("Scroll back while listening", isOn: $store.settings.scrollBackWhileListening)
+                        .disabled(!store.settings.simpleMode)
+                        .accessibilityIdentifier("scrollBackToggle")
                     TextField("Supporter PIN (optional)", text: $store.settings.supporterPIN)
                         .keyboardType(.numberPad)
                 } footer: {
-                    Text("Simple mode shows only the captions and one big button. Hold the top of the screen for two seconds to come back here. With a PIN, it is asked for first.")
+                    Text("Simple mode shows only the captions and one big button. Hold the top of the screen for two seconds to come back here. With a PIN, it is asked for first.\n\nWith scrolling back off, the newest words stay in view while listening, even if the screen is touched. Earlier words can still be read once listening stops, and in Past conversations.")
                 }
 
                 Section("Reading") {

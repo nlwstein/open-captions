@@ -11,6 +11,8 @@ struct TranscriptView: View {
     /// Open at the newest words rather than the first. True on the live screen even after Stop,
     /// where the last thing said is what the reader was looking at.
     var anchoredToEnd = false
+    /// No scrolling at all: the newest words stay in view whatever the reader does.
+    var lockedToEnd = false
     var showSpeakers = true
     /// Tap on a speaker's name. Nil when names cannot be changed from here.
     var onTapSpeaker: ((CaptionLine) -> Void)?
@@ -43,6 +45,14 @@ struct TranscriptView: View {
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .scrollPosition($position)
+        .scrollDisabled(lockedToEnd)
+        .onChange(of: lockedToEnd) { _, locked in
+            // Locking while scrolled back would otherwise leave the reader stranded there.
+            if locked {
+                following = true
+                scrollToEnd()
+            }
+        }
         .defaultScrollAnchor(anchoredToEnd ? .bottom : .top)
         // When the screen around the captions changes size — a button appearing below them, the
         // phone turning — keep the newest words in view rather than the oldest.

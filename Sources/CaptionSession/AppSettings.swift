@@ -42,6 +42,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// change, which is the failure that matters here.
     public var supporterPIN = ""
 
+    /// In simple mode, whether the captions can be scrolled back while listening. Off keeps the
+    /// newest words in place, for a reader who would scroll by accident and not find the way back;
+    /// once listening stops, scrolling works either way.
+    public var scrollBackWhileListening = true
+
     /// The first-run screens have been through: models downloaded, microphone asked for.
     public var setupDone = false
 
@@ -65,6 +70,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         keepScreenAwake = (try? c.decode(Bool.self, forKey: .keepScreenAwake)) ?? d.keepScreenAwake
         supporterPIN = (try? c.decode(String.self, forKey: .supporterPIN)) ?? d.supporterPIN
         setupDone = (try? c.decode(Bool.self, forKey: .setupDone)) ?? d.setupDone
+        scrollBackWhileListening = (try? c.decode(Bool.self, forKey: .scrollBackWhileListening))
+            ?? d.scrollBackWhileListening
     }
 
     /// Text sizes offered by the slider, in points.
