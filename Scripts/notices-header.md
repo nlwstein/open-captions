@@ -16,8 +16,8 @@ They are not part of this repository.
   speakers apart. Licensed by NVIDIA Corporation under the NVIDIA Open Model License.
   https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/
 - **Parakeet Unified 0.6B** (`nvidia/parakeet-unified-en-0.6b`), used when "Speech model" is
-  Parakeet Unified. Creative Commons Attribution 4.0 International (CC-BY-4.0), by NVIDIA.
-  https://creativecommons.org/licenses/by/4.0/
+  Parakeet Unified. Licensed by NVIDIA Corporation under the NVIDIA Open Model License.
+  https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/
 
 The Hugging Face cards for some of FluidInference's conversions name a different licence from
 NVIDIA's originals. The terms above are NVIDIA's, which are the ones that govern the weights.
@@ -27,9 +27,9 @@ NVIDIA's originals. The terms above are NVIDIA's, which are the ones that govern
 Bundled with the app rather than downloaded: a Core ML conversion, made by
 `Scripts/punctuation_model.py`, of
 
-- **punct_cap_seg_en** (`1-800-BAD-CODE/punct_cap_seg_en`), which adds punctuation, capitals and
-  sentence ends to the captions. Apache License 2.0 (full text under swift-argument-parser
-  below). https://huggingface.co/1-800-BAD-CODE/punct_cap_seg_en
+- **punct_cap_seg_en** (`1-800-BAD-CODE/punctuation_fullstop_truecase_english`, formerly `1-800-BAD-CODE/punct_cap_seg_en`), which adds
+  punctuation, capitals and sentence ends to the captions. Apache License 2.0 (full text under
+  swift-argument-parser below). https://huggingface.co/1-800-BAD-CODE/punctuation_fullstop_truecase_english
 
 ## Test recordings
 

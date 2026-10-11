@@ -20,8 +20,9 @@
 Writes Punctuation.mlpackage, vocabulary.tsv (the tokenizer's pieces, for PieceTokenizer) and
 LICENSE. Run by Scripts/make-punctuation-model.sh, which is what the build scripts call.
 
-The model is 1-800-BAD-CODE/punct_cap_seg_en (Apache-2.0), pinned to one revision. It goes ONNX ->
-PyTorch (onnx2torch) -> Core ML, fixed at one window of 256 tokens:
+The model is punct_cap_seg_en, from 1-800-BAD-CODE/punctuation_fullstop_truecase_english
+(Apache-2.0), pinned to one revision. It goes ONNX -> PyTorch (onnx2torch) -> Core ML, fixed at one
+window of 256 tokens:
 
 - Activations stay float32. The graph's attention-mask constant overflows in float16.
 - Weights are int8, which is weight-only and quarters the size (199 MB -> 50 MB). On the fixtures
@@ -48,7 +49,8 @@ from coremltools.converters.mil.frontend.torch.torch_op_registry import _TORCH_O
 from huggingface_hub import hf_hub_download
 from sentencepiece import sentencepiece_model_pb2
 
-REPO = "1-800-BAD-CODE/punct_cap_seg_en"
+# Renamed from 1-800-BAD-CODE/punct_cap_seg_en; the old name redirects. Same revision.
+REPO = "1-800-BAD-CODE/punctuation_fullstop_truecase_english"
 REVISION = "b26fd1c40e88678859048898218ea4edcc24c84a"
 LENGTH = 256
 BOS, EOS, PAD = 1, 2, 3
