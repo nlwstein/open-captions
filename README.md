@@ -83,6 +83,14 @@ by FluidInference and run through [FluidAudio](https://github.com/FluidInference
 | **Turns speech into words** (alternative, in settings) | [nvidia/parakeet-unified-en-0.6b](https://huggingface.co/nvidia/parakeet-unified-en-0.6b) | [FluidInference/parakeet-unified-en-0.6b-coreml](https://huggingface.co/FluidInference/parakeet-unified-en-0.6b-coreml) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
 | **Adds punctuation, capitals and sentence ends** | [1-800-BAD-CODE/punct_cap_seg_en](https://huggingface.co/1-800-BAD-CODE/punct_cap_seg_en) | Built into the app, converted by [Scripts/punctuation_model.py](Scripts/punctuation_model.py) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 
+## Install
+
+- Download the latest `.ipa` from the [Releases page](https://github.com/nlwstein/open-captions/releases).
+- It is unsigned. Install it with a sideloading tool such as [AltStore](https://altstore.io),
+  [SideStore](https://sidestore.io) or [Sideloadly](https://sideloadly.io), which signs it with
+  your own Apple ID.
+- It needs iOS 26 or later. The speech models (about 1.1 GB) download when the app is first set up.
+
 ## Building it yourself
 
 Open Captions isn't on the App Store yet. To put it on your own phone you need a Mac with:
