@@ -29,3 +29,4 @@ __pycache__/
 # The iOS app: generated Info.plist, and Scripts/sim.sh build output, screenshots and pulled diagnostics
 App/Generated/
 .sim/
+.device/

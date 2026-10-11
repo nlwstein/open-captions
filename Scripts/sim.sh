@@ -53,7 +53,7 @@ case "$cmd" in
     (cd App && xcodegen generate --quiet)
     set +e
     xcodebuild -project App/LiveCaption.xcodeproj -scheme LiveCaption \
-      -destination "platform=iOS Simulator,name=$DEVICE_NAME" \
+      -destination "id=$(udid)" \
       -derivedDataPath "$DERIVED" build > "$OUT/build.log" 2>&1
     status=$?
     set -e
