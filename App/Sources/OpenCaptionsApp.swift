@@ -2,7 +2,7 @@ import CaptionSession
 import SwiftUI
 
 @main
-struct LiveCaptionApp: App {
+struct OpenCaptionsApp: App {
     @State private var model = AppModel()
 
     var body: some Scene {

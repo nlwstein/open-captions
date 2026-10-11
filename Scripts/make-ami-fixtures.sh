@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Builds the real-speech fixtures from the AMI Meeting Corpus, plus a synthetic twin of
-# the same conversation for the controlled comparison in the README.
+# the same conversation for the controlled comparison in docs/RESEARCH.md.
 #
 #   Scripts/make-ami-fixtures.sh              # into Fixtures/
 #   Scripts/make-ami-fixtures.sh --corpus DIR # use a corpus that is already downloaded

@@ -6,7 +6,7 @@ import Foundation
 struct CaptionHarness: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "caption-harness",
-        abstract: "Measures the live-caption ASR pipeline against recorded fixtures.",
+        abstract: "Measures the open-captions ASR pipeline against recorded fixtures.",
         discussion: """
         Fixtures live under Fixtures/ as audio/<name>.wav with an optional \
         reference/<name>.txt and metadata/<name>.json.

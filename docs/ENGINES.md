@@ -614,7 +614,7 @@ it does beat EOU on real audio as well, 61.9% against 76.0%. But gaining that sa
 wins every synthetic fixture lands mid-pack on real audio, for exactly the same reason the worst one
 does: neither is being handed audio at a level it was trained on.
 
-**This is not a reason to apply 33 dB of gain to everything.** The README's Finding 3 records the
+**This is not a reason to apply 33 dB of gain to everything.** docs/RESEARCH.md's Finding 3 records the
 opposite result on `ami-meeting-far`: boosting that clip made it worse (23.5% → 26.1%), because
 lifting the signal lifts the microphone's noise floor with it. DiPCo is an extreme case at −59.7
 dBFS mean. What the two results jointly say is that the app needs a gain stage that tracks speech

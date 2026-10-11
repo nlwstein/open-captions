@@ -205,7 +205,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
     public struct Options: Sendable {
         /// Which recogniser runs.
         ///
-        /// **Nemotron 0.6B at 1120 ms, since the far-field measurement in ENGINES.md.** On two
+        /// **Nemotron 0.6B at 1120 ms, since the far-field measurement in docs/ENGINES.md.** On two
         /// five-minute windows of DiPCo's table array it scores 44.3% and 31.3% WER against EOU
         /// 120M's 76.0% and 52.0% — and, more to the point for a caption aid, it recovers 54.1% of
         /// the reference content words against EOU's 23.8%. EOU's failures are almost entirely
@@ -223,14 +223,14 @@ public final class StreamingCaptioner: @unchecked Sendable {
         /// latency and is close behind on WER (43.6% and 35.4%), but it is notably worse at
         /// negations and numbers — 52.7% pooled against Nemotron's 69.1% — which is the wrong way
         /// round to fail on an accessibility tool. EOU stays for its latency floor and because
-        /// every earlier number in ENGINES.md was measured with it.
+        /// every earlier number in docs/ENGINES.md was measured with it.
         public var asrVariant: StreamingModelVariant = .nemotron1120ms
 
         /// Chunk size for the EOU recogniser, overriding what `asrVariant` is named for.
         ///
         /// Leave it `nil` to take the size from the variant name, which is the normal case:
         /// `parakeetEou1280ms` should mean 1280 ms chunks. Set it only to run a variant at other
-        /// than its own size, which is what the 160-vs-320 measurement in ENGINES.md did — 320 ms
+        /// than its own size, which is what the 160-vs-320 measurement in docs/ENGINES.md did — 320 ms
         /// is the shortest that holds up, 4.88% WER at 19.25x realtime in FluidAudio's own M-series
         /// benchmarks against 8.23% at 160 ms.
         ///
@@ -267,7 +267,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
 
         /// Must match the model the benchmark was run against or the numbers do not transfer.
         /// `.default` is what `fluidaudiocli sortformer` uses with no flags, and it is what every
-        /// figure in ENGINES.md was measured with. `balancedV2_1` is also ~1.04 s but is a
+        /// figure in docs/ENGINES.md was measured with. `balancedV2_1` is also ~1.04 s but is a
         /// different model; swapping it silently would invalidate the comparison.
         public var sortformerConfig: SortformerConfig = .default
 
@@ -283,13 +283,13 @@ public final class StreamingCaptioner: @unchecked Sendable {
         ///
         /// On, because the measurement is not close: nineteen points of WER on Nemotron between
         /// DiPCo's far-field channel as captured and the same audio gained to a normal level, and
-        /// the README's Finding 3 finds the same lever on AMI. The stage only ever adds gain, so
+        /// docs/RESEARCH.md's Finding 3 finds the same lever on AMI. The stage only ever adds gain, so
         /// audio that is already loud enough passes through untouched — which is the case that made
         /// a fixed multiplier wrong.
         ///
         /// It applies to the recogniser only. The level meter and the diarizer see the audio as
         /// captured, so what the TUI reports is what the microphone delivered and the diarization
-        /// figures in ENGINES.md still describe the input they were measured on.
+        /// figures in docs/ENGINES.md still describe the input they were measured on.
         public var automaticGain: Bool = true
 
         /// Ceiling on the gain stage's output level, in dB above the input. Forwarded to

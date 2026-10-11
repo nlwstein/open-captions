@@ -11,7 +11,7 @@ any audio file and it prints a speaker-attributed transcript, colour-coded, one 
 It runs two models, both through FluidAudio's CLI, and joins them here:
 
   * **Parakeet TDT v3** for the words, with per-word timings. This is the engine that wins on every
-    real recording in the fixture set and runs at a real-time factor of 0.009 — see ENGINES.md.
+    real recording in the fixture set and runs at a real-time factor of 0.009 — see docs/ENGINES.md.
   * **a diarizer** for the speaker segments. `sortformer` by default; see `--diarizer`.
 
 The join is the part that does not exist upstream, and it is deliberately simple: each word takes
@@ -21,7 +21,7 @@ output means it did not detect speech there, not that nobody was speaking.
 
 Read the numbers before trusting the colours. On DiPCo — ten sessions of a simulated dinner party
 recorded in a lab, not ten real homes — one-colour-per-speaker attribution is wrong often enough
-that the colours are a useful hint and not a transcript of who spoke. ENGINES.md has the
+that the colours are a useful hint and not a transcript of who spoke. docs/ENGINES.md has the
 measurements, including which diarizer they are measurements *of*.
 
 Everything runs locally. No audio leaves the machine, and nothing here writes to the network.
@@ -92,7 +92,7 @@ def find_cli(explicit: str | None) -> pathlib.Path:
         "  git clone --depth 1 https://github.com/FluidInference/FluidAudio.git ~/fluidaudio/src\n"
         "  cd ~/fluidaudio/src && swift build -c release --product fluidaudiocli\n"
         "  cp .build/release/fluidaudiocli ~/.local/bin/\n"
-        "then pass --cli PATH or set FLUIDAUDIO_CLI. See ENGINES.md."
+        "then pass --cli PATH or set FLUIDAUDIO_CLI. See docs/ENGINES.md."
     )
 
 
@@ -314,7 +314,7 @@ def main() -> int:
     parser.add_argument("--title", default=None, help="Heading for the HTML page.")
     parser.add_argument("--diarizer", choices=("sortformer", "lseend"), default="sortformer",
                         help="sortformer is the default: it scores far higher on real far-field "
-                             "audio than lseend's best variant. See ENGINES.md.")
+                             "audio than lseend's best variant. See docs/ENGINES.md.")
     parser.add_argument("--cli", help="Path to the FluidAudio CLI.")
     parser.add_argument("--min-turn", type=float, default=MIN_TURN_SECONDS, metavar="SECONDS",
                         help=f"Shortest speaker change to display (default {MIN_TURN_SECONDS}). "

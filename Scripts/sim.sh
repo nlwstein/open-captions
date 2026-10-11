@@ -24,7 +24,7 @@ DEVICE_NAME=${SIM_DEVICE:-iPhone 17 Pro Max}
 BUNDLE=io.nlws.livecaption
 OUT=.sim
 DERIVED=$OUT/dd
-APP=$DERIVED/Build/Products/Debug-iphonesimulator/LiveCaption.app
+APP=$DERIVED/Build/Products/Debug-iphonesimulator/OpenCaptions.app
 MODELS="$HOME/Library/Application Support/FluidAudio/Models"
 
 udid() {
@@ -54,7 +54,7 @@ case "$cmd" in
     Scripts/make-punctuation-model.sh
     (cd App && xcodegen generate --quiet)
     set +e
-    xcodebuild -project App/LiveCaption.xcodeproj -scheme LiveCaption \
+    xcodebuild -project App/OpenCaptions.xcodeproj -scheme OpenCaptions \
       -destination "id=$(udid)" \
       -derivedDataPath "$DERIVED" build > "$OUT/build.log" 2>&1
     status=$?

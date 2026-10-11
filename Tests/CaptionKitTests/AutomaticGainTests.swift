@@ -68,7 +68,7 @@ final class AutomaticGainTests: XCTestCase {
     /// The regression this design exists to prevent. The first implementation tracked a noise floor
     /// that rose at 6 dB/s from −120, so after fifty frames of a quiet room it was still below the
     /// signal, every frame read as speech, and the stage applied its full 32 dB to a silent room —
-    /// the exact failure the README's Finding 3 warns about.
+    /// the exact failure docs/RESEARCH.md's Finding 3 warns about.
     func testFlatSilenceIsNotAmplified() {
         var gain = AutomaticGain()
         for _ in 0..<300 { _ = gain.process(chunk(0.0001)) }

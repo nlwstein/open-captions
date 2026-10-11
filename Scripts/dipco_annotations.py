@@ -5,7 +5,7 @@ DiPCo is ten sessions of four people around a dining table — a simulated dinne
 a lab for Interspeech 2020, with music piped into several sessions and genuine overlapping speech.
 Five far-field array devices around the room, and one close-talk headset per participant. It is a
 different room and a different kind of speech from the AMI design meetings the fixtures use, which
-is the whole reason for adding it — see ENGINES.md.
+is the whole reason for adding it — see docs/ENGINES.md.
 
 Usage:
     dipco_annotations.py turns     <transcriptions.json> <device>

@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "LiveCaption",
+    name: "OpenCaptions",
     platforms: [
         .macOS(.v14),
         .iOS(.v17),
@@ -16,7 +16,7 @@ let package = Package(
         .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "1.1.1"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
         // Pinned to an exact revision rather than a version range: every diarization number in
-        // ENGINES.md was measured against this commit, and FluidAudio ships model-download URLs
+        // docs/ENGINES.md was measured against this commit, and FluidAudio ships model-download URLs
         // and CoreML shapes that a moving dependency would silently change under the measurements.
         .package(
             url: "https://github.com/FluidInference/FluidAudio.git",

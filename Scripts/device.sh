@@ -17,7 +17,7 @@ cd "$(dirname "$0")/.."
 BUNDLE=io.nlws.livecaption
 OUT=.device
 DERIVED=$OUT/dd
-APP=$DERIVED/Build/Products/Debug-iphoneos/LiveCaption.app
+APP=$DERIVED/Build/Products/Debug-iphoneos/OpenCaptions.app
 
 teams() {
   defaults read com.apple.dt.Xcode IDEProvisioningTeamByIdentifier 2>/dev/null |
@@ -63,7 +63,7 @@ case "$cmd" in
     Scripts/make-punctuation-model.sh
     (cd App && xcodegen generate --quiet)
     set +e
-    xcodebuild -project App/LiveCaption.xcodeproj -scheme LiveCaption \
+    xcodebuild -project App/OpenCaptions.xcodeproj -scheme OpenCaptions \
       -destination "id=$d" -derivedDataPath "$DERIVED" \
       -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
       DEVELOPMENT_TEAM="$t" build > "$OUT/build.log" 2>&1

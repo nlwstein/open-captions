@@ -4,7 +4,7 @@ import Foundation
 
 /// Scores a transcript that some *other* process produced.
 ///
-/// Every number in the README comes from `evaluate`, which runs WhisperKit and scores what it
+/// Every number in docs/RESEARCH.md comes from `evaluate`, which runs WhisperKit and scores what it
 /// returns. That is the right shape for measuring our own loop and the wrong shape for comparing
 /// engines: a second engine would have to be wired into `CaptionEngine`, built, and kept working
 /// before it could produce a single WER figure — and if the answer is "this engine is worse", all

@@ -1,21 +1,21 @@
 # The iOS app. Generated with xcodegen so the project file is not hand-merged:
 #   cd App && xcodegen generate
 # The .xcodeproj is not committed; Scripts/sim.sh regenerates it on every build.
-name: LiveCaption
+name: OpenCaptions
 options:
   bundleIdPrefix: io.nlws
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
 packages:
-  LiveCaption:
+  OpenCaptions:
     path: ..
   # The caption list's layout: keeps the newest line pinned while it grows. See CaptionList.swift.
   ChatLayout:
     url: https://github.com/ekazaev/ChatLayout
     exactVersion: 2.5.2
 targets:
-  LiveCaption:
+  OpenCaptions:
     type: application
     platform: iOS
     sources:
@@ -35,9 +35,9 @@ targets:
         script: '"$SRCROOT/../Scripts/make-changelog.sh" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/changelog.txt"'
         basedOnDependencyAnalysis: false
     dependencies:
-      - package: LiveCaption
+      - package: OpenCaptions
         product: CaptionSession
-      - package: LiveCaption
+      - package: OpenCaptions
         product: CaptionKit
       - package: ChatLayout
     info:

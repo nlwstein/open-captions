@@ -55,7 +55,7 @@ struct Stream: AsyncParsableCommand {
         name: .long,
         help: """
             Recogniser to run. Any StreamingModelVariant raw value. Defaults to nemotron-1120ms, \
-            which is what the far-field measurement in ENGINES.md chose; parakeet-eou-320ms is the \
+            which is what the far-field measurement in docs/ENGINES.md chose; parakeet-eou-320ms is the \
             low-latency option, and parakeet-unified1120ms the other 0.6B one.
             """
     )
@@ -1245,7 +1245,7 @@ final class Keyboard: @unchecked Sendable {
         defer { activeLock.unlock() }
         guard sources.isEmpty else { return }
 
-        let queue = DispatchQueue(label: "live-caption.signals")
+        let queue = DispatchQueue(label: "open-captions.signals")
         for number in [SIGINT, SIGTERM, SIGHUP] {
             // The default disposition is replaced by the source, but it must not *also* fire, or the
             // process dies before the handler runs.

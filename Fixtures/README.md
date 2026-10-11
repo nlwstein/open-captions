@@ -46,7 +46,7 @@ removes the reference from the list of things that could be wrong: when the reco
 with the reference, the recognizer is what erred. The trade-off is that synthesized speech is not
 real speech, and the noise beds built around it are not real noise either. Measured against recorded
 meetings those fixtures turn out to be much *harder* than the scenario they were meant to stand in
-for — see the README's "Finding 1".
+for — see docs/RESEARCH.md's "Finding 1".
 
 **Human-annotated corpus recordings** (`Scripts/make-ami-fixtures.sh`). The `ami-*` fixtures are
 real meetings from the AMI Meeting Corpus, where the reference is a professional verbatim
@@ -73,7 +73,7 @@ meetings are real speech, but they are not this user's family and not her doctor
 The two noise beds are built differently on purpose, and the difference turned out to be the most
 useful result so far. `make_babble` concatenates a few complete sentences, so each is intelligible.
 `make_crowd` staggers eight voices 850 ms apart so they overlap, so none is. A recognizer transcribes
-the first as content and ignores the second. See the README's "Finding 5".
+the first as content and ignores the second. See docs/RESEARCH.md's "Finding 5".
 
 ## The AMI fixtures
 
@@ -120,7 +120,7 @@ reference transcript was derived from the corpus word annotations for that windo
 
 ### Attribution: DiPCo (not committed)
 
-The `Scripts/dipco-farfield-benchmark.sh` measurements in [ENGINES.md](../ENGINES.md) use a second
+The `Scripts/dipco-farfield-benchmark.sh` measurements in [docs/ENGINES.md](../docs/ENGINES.md) use a second
 corpus that is **not** part of this fixture set and is not in git — it is a 12.5 GB download into
 `.corpora/dipco`, which is gitignored. It is the **DiPCo Dinner Party Corpus** (Interspeech 2020),
 released under the
@@ -138,7 +138,7 @@ still far closer to the app's setting than a design meeting, which is why it is 
 Changes made: none to the corpus files themselves. Turn timings and reference text are derived at
 run time from the corpus's own transcription JSON, per device, by `Scripts/dipco_annotations.py`;
 audio is decoded as shipped except where a control mix of the four close-talk channels is built with
-`ffmpeg`. Which device a session is scored on is a script argument, recorded in ENGINES.md.
+`ffmpeg`. Which device a session is scored on is a script argument, recorded in docs/ENGINES.md.
 
 ## Regenerating
 

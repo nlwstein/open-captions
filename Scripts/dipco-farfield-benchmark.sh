@@ -8,7 +8,7 @@
 # DiPCo is ten sessions of four people around a dining table — a simulated dinner party recorded in
 # a lab for Interspeech 2020, with music piped into several sessions and real overlapping speech.
 # It is the closest public audio to what this app is for, which is why it is here next to the AMI
-# meetings in ENGINES.md.
+# meetings in docs/ENGINES.md.
 #
 # Each session has up to five far-field array devices (U01-U05) of seven channels each, plus one
 # close-talk headset per participant. The transcriptions carry a *separate* timestamp set per

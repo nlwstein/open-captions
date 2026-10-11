@@ -70,7 +70,7 @@ struct Live: AsyncParsableCommand {
     ///
     /// It costs accuracy: mean word error rate 28.5% against turbo's 17.8%, and 78.3% critical
     /// information against 87.0%. That trade is the whole point of the exercise — the numbers are
-    /// in the README so the trade can be argued with rather than assumed.
+    /// in docs/RESEARCH.md so the trade can be argued with rather than assumed.
     static let liveModel = "openai_whisper-small"
 
     func run() async throws {
@@ -399,7 +399,7 @@ final class LiveDisplay: @unchecked Sendable {
     private var bodyWidth: Int { max(20, terminalSize().columns - 2) }
 
     private func header(_ columns: Int) -> String {
-        let left = " live-caption"
+        let left = " open-captions"
         let clock = formatClock(latest.elapsed)
         let right = latest.level.isSpeaking ? "● listening  \(clock) " : "○ quiet      \(clock) "
         let gap = max(1, columns - left.count - right.count)

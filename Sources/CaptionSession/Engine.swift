@@ -16,7 +16,7 @@ public protocol CaptionEngine: AnyObject, Sendable {
 extension StreamingCaptioner: CaptionEngine {}
 
 /// The recognisers the app offers. A short list on purpose: each of these was measured in
-/// ENGINES.md, and an option nobody has measured is a way for a setting to make things worse.
+/// docs/ENGINES.md, and an option nobody has measured is a way for a setting to make things worse.
 public enum EngineChoice: String, CaseIterable, Codable, Sendable {
     /// Nemotron 0.6B, 1120 ms. What the harness ships and what was judged to work well.
     case nemotron
