@@ -27,21 +27,25 @@ jobs:
     outputs:
       key: ${{ steps.key.outputs.key }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: key
         run: echo "key=punctuation-${{ env.PUNCTUATION_CACHE_VERSION }}-${{ runner.os }}-${{ hashFiles('Scripts/make-punctuation-model.sh', 'Scripts/punctuation_model.py') }}" >> "$GITHUB_OUTPUT"
       - id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .models/punctuation
           key: ${{ steps.key.outputs.key }}
           lookup-only: true
       - if: steps.cache.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v6
+        # setup-uv no longer publishes floating major tags, so it is pinned exactly.
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          # The model cache above is what matters; uv's own cache would only be saved on a miss.
+          enable-cache: false
       - if: steps.cache.outputs.cache-hit != 'true'
         run: Scripts/make-punctuation-model.sh
       - if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .models/punctuation
           key: ${{ steps.key.outputs.key }}
@@ -52,7 +56,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # testThisRepositorysHistoryIsConventional reads the whole git log.
           fetch-depth: 0
@@ -62,12 +66,12 @@ jobs:
           sudo xcode-select -s "$xcode"
           xcodebuild -version
           swift --version
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         with:
           path: .models/punctuation
           key: ${{ needs.punctuation-model.outputs.key }}
           fail-on-cache-miss: true
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .build
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
@@ -81,7 +85,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The app's changelog build phase writes the git history into the bundle.
           fetch-depth: 0
@@ -90,7 +94,7 @@ jobs:
           xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
           sudo xcode-select -s "$xcode"
           xcodebuild -version
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         with:
           path: .models/punctuation
           key: ${{ needs.punctuation-model.outputs.key }}
@@ -99,7 +103,7 @@ jobs:
         run: command -v xcodegen || brew install xcodegen
       - name: Generate project
         run: cd App && xcodegen generate --quiet
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .sim/dd/SourcePackages
           key: app-spm-${{ runner.os }}-${{ hashFiles('Package.resolved', 'App/project.yml') }}
@@ -117,7 +121,7 @@ jobs:
           tail -5 build.log
           exit $status
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-build-log
           path: build.log
