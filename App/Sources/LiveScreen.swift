@@ -41,7 +41,7 @@ struct LiveScreen: View {
                         controls
                         Spacer(minLength: 0)
                     }
-                    .frame(width: 240)
+                    .frame(width: 260)
                 }
             } else {
                 VStack(spacing: 0) {
@@ -184,6 +184,7 @@ struct LiveScreen: View {
             }
         } else {
             TranscriptView(lines: lines, live: live.isRunning, anchoredToEnd: true,
+                           lockedToEnd: simple && live.isRunning && !model.settings.scrollBackWhileListening,
                            showSpeakers: model.settings.showSpeakers,
                            onTapSpeaker: simple ? nil : { line in
                                newName = live.session?.names[line.speaker ?? -1] ?? ""
@@ -229,10 +230,15 @@ struct LiveScreen: View {
             mainButton
             if !live.isRunning, !model.history.isEmpty, simple {
                 Button { model.path = [.history] } label: {
+                    // In the narrow landscape column the words wrap; with the icon above them they
+                    // wrap as one centred block instead of hanging beside it.
                     Label("Past conversations", systemImage: "clock.arrow.circlepath")
-                        .font(.system(size: min(style.captionSize * 0.6, 28), weight: .semibold,
-                                      design: style.design))
+                        .labelStyle(StackedLabelStyle(stacked: sideways))
+                        .font(.system(size: min(style.captionSize * 0.6, sideways ? 24 : 28),
+                                      weight: .semibold, design: style.design))
+                        .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity, minHeight: 64)
+                        .padding(.vertical, sideways ? 8 : 0)
                 }
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.roundedRectangle(radius: 20))
@@ -278,6 +284,22 @@ struct LiveScreen: View {
 
     private var renamingBinding: Binding<Bool> {
         Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
+    }
+}
+
+/// Icon beside the title, or above it.
+struct StackedLabelStyle: LabelStyle {
+    var stacked: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if stacked {
+            VStack(spacing: 4) {
+                configuration.icon
+                configuration.title
+            }
+        } else {
+            Label(configuration)
+        }
     }
 }
 
