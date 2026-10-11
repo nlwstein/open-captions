@@ -19,7 +19,7 @@ enum About {
             .flatMap(Changelog.load) ?? Changelog(entries: [])
     }()
 
-    /// "0.1 (03429dd)": the version, and the commit it was built from.
+    /// "0.1.0 (03429dd)": the version (MARKETING_VERSION), and the commit it was built from.
     static var version: String {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         return changelog.buildCommit.map { "\(short) (\($0))" } ?? short

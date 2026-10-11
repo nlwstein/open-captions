@@ -44,8 +44,10 @@ targets:
       path: Generated/Info.plist
       properties:
         CFBundleDisplayName: Captions
-        CFBundleShortVersionString: "0.1"
-        CFBundleVersion: "1"
+        # From the build settings below, so a release build can pass its own:
+        #   xcodebuild ... MARKETING_VERSION=1.2.3 CURRENT_PROJECT_VERSION=42
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSMicrophoneUsageDescription: >-
           Captions listens to the conversation around you and shows it as text.
           Everything stays on this phone.
@@ -71,6 +73,10 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.nlws.livecaption
+        # Defaults for local builds. Releases (.github/workflows/release.yml) set the version from
+        # the tag and the build number from the commit count.
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
