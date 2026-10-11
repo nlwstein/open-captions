@@ -61,11 +61,6 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        UISupportedInterfaceOrientations~ipad:
-          - UIInterfaceOrientationPortrait
-          - UIInterfaceOrientationPortraitUpsideDown
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
         ITSAppUsesNonExemptEncryption: false
         # Lets Finder (and Scripts/sim.sh) reach Documents/Diagnostics.
         UIFileSharingEnabled: true
@@ -78,7 +73,9 @@ targets:
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: "5.0"
-        TARGETED_DEVICE_FAMILY: "1,2"
+        # iPhone only for now: the layouts are built and checked for phones, and an iPad build
+        # would need its own screenshots and review.
+        TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         ENABLE_PREVIEWS: YES
         # The changelog script reads git history from outside the build directory.

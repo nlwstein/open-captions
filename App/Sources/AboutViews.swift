@@ -3,6 +3,9 @@ import SwiftUI
 
 /// What the app knows about itself: the dedication, the changelog, the version.
 enum About {
+    static let projectURL = URL(string: "https://github.com/nlwstein/open-captions")!
+    static let privacyURL = URL(string: "https://github.com/nlwstein/open-captions/blob/main/PRIVACY.md")!
+
     /// `Dedication.md` with its comments removed, or nil while nothing has been written.
     static let dedication: String? = {
         guard let url = Bundle.main.url(forResource: "Dedication", withExtension: "md"),

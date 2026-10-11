@@ -111,6 +111,12 @@ struct SettingsView: View {
                     } label: {
                         Label("Acknowledgements", systemImage: "doc.text")
                     }
+                    Link(destination: About.privacyURL) {
+                        Label("Privacy policy", systemImage: "hand.raised")
+                    }
+                    Link(destination: About.projectURL) {
+                        Label("Source code and help", systemImage: "chevron.left.forwardslash.chevron.right")
+                    }
                     LabeledContent("Version", value: About.version)
                 } header: {
                     Text("About")

@@ -55,7 +55,7 @@ The screenshots are from the iOS Simulator, playing back a scripted conversation
 
 ## Requirements
 
-- An iPhone with iOS 26 or later. iPad works too.
+- An iPhone with iOS 26 or later.
 - About 1.1 GB of free space for the speech models. They download once, when the app is first set
   up. The alternative Parakeet Unified model in settings is about 3.3 GB.
 - The first start after setup takes about 20 seconds while the phone prepares the models. After
@@ -119,6 +119,8 @@ speech engines against recorded conversations, is described in [docs/RESEARCH.md
   the settings say.
 - **The internet is used once,** to download the speech models from Hugging Face. Nothing is
   uploaded.
+
+The full policy is in [PRIVACY.md](PRIVACY.md).
 
 ## Licence
 
