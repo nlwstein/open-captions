@@ -10,6 +10,10 @@ options:
 packages:
   LiveCaption:
     path: ..
+  # The caption list's layout: keeps the newest line pinned while it grows. See CaptionList.swift.
+  ChatLayout:
+    url: https://github.com/ekazaev/ChatLayout
+    exactVersion: 2.5.2
 targets:
   LiveCaption:
     type: application
@@ -29,6 +33,7 @@ targets:
         product: CaptionSession
       - package: LiveCaption
         product: CaptionKit
+      - package: ChatLayout
     info:
       path: Generated/Info.plist
       properties:

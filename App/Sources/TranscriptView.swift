@@ -19,67 +19,30 @@ struct TranscriptView: View {
 
     @Environment(\.captionStyle) private var baseStyle
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var width: CGFloat = 0
+    @State private var following = true
+    @State private var jumpToEnd = 0
 
     /// The text column: the view less its margins and the speaker bar, at most 900 points.
     private var style: CaptionStyle {
         baseStyle.fitting(width: min(width, 900) - 40 - (showSpeakers ? 18 : 0))
     }
 
-    @State private var position = ScrollPosition(edge: .bottom)
-    @State private var following = true
-    @State private var atBottom = true
-    @State private var userScrolling = false
-
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(lines) { line in
-                    paragraph(line)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .frame(maxWidth: 900, alignment: .leading)
-            .frame(maxWidth: .infinity)
-        }
+        CaptionList(
+            lines: lines, live: live, anchoredToEnd: anchoredToEnd, locked: lockedToEnd,
+            showSpeakers: showSpeakers, style: style,
+            styleKey: .init(settings: baseStyle.settings, colorScheme: baseStyle.colorScheme,
+                            systemHighContrast: baseStyle.systemHighContrast,
+                            dynamicTypeSize: dynamicTypeSize, width: width, showSpeakers: showSpeakers),
+            animated: !reduceMotion, onTapSpeaker: onTapSpeaker,
+            onFollowingChange: { following = $0 }, jumpToEnd: jumpToEnd)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .scrollPosition($position)
-        .scrollDisabled(lockedToEnd)
-        .onChange(of: lockedToEnd) { _, locked in
-            // Locking while scrolled back would otherwise leave the reader stranded there.
-            if locked {
-                following = true
-                scrollToEnd()
-            }
-        }
-        .defaultScrollAnchor(anchoredToEnd ? .bottom : .top)
-        // When the screen around the captions changes size — a button appearing below them, the
-        // phone turning — keep the newest words in view rather than the oldest.
-        .defaultScrollAnchor(anchoredToEnd ? .bottom : .top, for: .sizeChanges)
-        .onScrollGeometryChange(for: Bool.self) { geometry in
-            geometry.contentOffset.y + geometry.containerSize.height
-                >= geometry.contentSize.height - 60
-        } action: { _, isAtBottom in
-            atBottom = isAtBottom
-            if userScrolling { following = isAtBottom }
-        }
-        .onScrollPhaseChange { old, new in
-            // Only the reader's own scrolling decides whether to follow. Content growing while
-            // nobody touches the screen is not the reader leaving the bottom.
-            let byHand: [ScrollPhase] = [.tracking, .interacting, .decelerating]
-            userScrolling = byHand.contains(new)
-            if new == .idle, byHand.contains(old) { following = atBottom }
-        }
-        .onChange(of: lines) {
-            guard live, following else { return }
-            scrollToEnd()
-        }
         .overlay(alignment: .bottom) {
             if live, !following, !lines.isEmpty {
                 Button {
-                    following = true
-                    scrollToEnd()
+                    jumpToEnd += 1
                 } label: {
                     Label("Back to now", systemImage: "arrow.down")
                         .font(style.captionFont(scale: 0.6).weight(.semibold))
@@ -93,21 +56,22 @@ struct TranscriptView: View {
             }
         }
     }
+}
 
-    private func scrollToEnd() {
-        if reduceMotion {
-            position.scrollTo(edge: .bottom)
-        } else {
-            withAnimation(.easeOut(duration: 0.2)) { position.scrollTo(edge: .bottom) }
-        }
-    }
+/// One turn: the speaker's name when it changes, a bar in their colour, and what they said.
+struct CaptionParagraph: View {
+    let line: CaptionLine
+    /// The first paragraph shown, which needs no space above its name.
+    let first: Bool
+    let showSpeakers: Bool
+    let style: CaptionStyle
+    var onTapSpeaker: ((CaptionLine) -> Void)?
 
-    @ViewBuilder
-    private func paragraph(_ line: CaptionLine) -> some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if showSpeakers, line.startsNewSpeaker {
-                speakerHeader(line)
-                    .padding(.top, line.id == lines.first?.id ? 0 : 18)
+                speakerHeader
+                    .padding(.top, first ? 0 : 18)
             }
             HStack(alignment: .top, spacing: 12) {
                 if showSpeakers {
@@ -131,7 +95,7 @@ struct TranscriptView: View {
         .accessibilityLabel(showSpeakers ? "\(line.label): \(line.text)" : line.text)
     }
 
-    private func speakerHeader(_ line: CaptionLine) -> some View {
+    private var speakerHeader: some View {
         let header = HStack(spacing: 8) {
             Circle()
                 .fill(style.speakerColor(line.speakerNumber))
