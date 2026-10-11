@@ -26,6 +26,11 @@ final class AppModel {
     /// Launch arguments act once, even if a second scene (Assistive Access) asks again.
     private var launched = false
 
+    /// Which way the window is turned. Lying on its side, the phone's safe area is the same on
+    /// both sides, so this is the only way to tell which side the Dynamic Island is on.
+    private(set) var orientation: UIInterfaceOrientation = .portrait
+    @ObservationIgnored private var orientationWatch: NSKeyValueObservation?
+
     enum Route: Hashable {
         case history
         case transcript(UUID)
@@ -92,9 +97,17 @@ final class AppModel {
     func onLaunch() async {
         guard !launched else { return }
         launched = true
-        if let landscape = launch.landscape,
-           let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            scene.requestGeometryUpdate(.iOS(interfaceOrientations: landscape ? .landscapeRight : .portrait))
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            orientationWatch = scene.observe(\.effectiveGeometry, options: [.initial, .new]) { [weak self] scene, _ in
+                MainActor.assumeIsolated {
+                    self?.orientation = scene.effectiveGeometry.interfaceOrientation
+                }
+            }
+            if let landscape = launch.landscape {
+                let side: UIInterfaceOrientationMask = !landscape ? .portrait
+                    : launch.landscapeLeft ? .landscapeLeft : .landscapeRight
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: side))
+            }
         }
         switch launch.screen {
         case .history: path = [.history]

@@ -89,8 +89,9 @@ struct CaptionParagraph: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
-            .padding(.bottom, style.paragraphSpacing)
         }
+        // Above rather than below, so there is no empty gap under the newest words.
+        .padding(.top, first ? 0 : style.paragraphSpacing)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(showSpeakers ? "\(line.label): \(line.text)" : line.text)
     }

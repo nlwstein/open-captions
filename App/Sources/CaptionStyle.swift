@@ -62,7 +62,7 @@ struct CaptionStyle {
         captionSize * settings.lineSpacing
     }
 
-    /// Space after a paragraph: half a line more than between its lines, so a new paragraph reads
+    /// Space between paragraphs: half a line more than between their lines, so a new paragraph reads
     /// as one even without the break in the speaker bar, as in the simple view.
     var paragraphSpacing: CGFloat {
         lineSpacing + captionSize * 0.5

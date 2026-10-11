@@ -27,22 +27,16 @@ struct LiveScreen: View {
     /// captions need, so the controls move to a column on the right instead.
     private var sideways: Bool { verticalSizeClass == .compact }
 
+    /// The safe area, which on its side is a strip down each end of the phone.
+    @State private var insets = EdgeInsets()
+
+    /// The Dynamic Island is on the right: the phone turned with its home side to the left.
+    private var islandOnRight: Bool { model.orientation == .landscapeLeft }
+
     var body: some View {
         Group {
             if sideways {
-                HStack(spacing: 0) {
-                    captions
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    VStack(spacing: 12) {
-                        header
-                        // Centred in the space under the header, where a thumb finds it from
-                        // either side of the phone.
-                        Spacer(minLength: 0)
-                        controls
-                        Spacer(minLength: 0)
-                    }
-                    .frame(width: 260)
-                }
+                sidewaysLayout
             } else {
                 VStack(spacing: 0) {
                     header
@@ -52,7 +46,10 @@ struct LiveScreen: View {
                 }
             }
         }
-        .background(style.background.ignoresSafeArea())
+        .background {
+            style.background.ignoresSafeArea()
+                .onGeometryChange(for: EdgeInsets.self) { $0.safeAreaInsets } action: { insets = $0 }
+        }
         .toolbar(simple ? .hidden : .visible, for: .navigationBar)
         .toolbar {
             if !simple {
@@ -95,12 +92,64 @@ struct LiveScreen: View {
         }
     }
 
+    // MARK: - On its side
+
+    /// Captions on the Dynamic Island's side, with a narrow column of controls on the other.
+    ///
+    /// The phone's safe area is a strip down each end, the same width on both sides, though only
+    /// one has the island in it. The captions keep clear of the island; the controls, centred
+    /// top to bottom away from the rounded corners, reach into the strip on the other side, which
+    /// was empty. The buttons are sized for a thumb, not to fill a column: with them, the
+    /// captions on a 17 Pro Max went from about 505 points wide to 650.
+    private var sidewaysLayout: some View {
+        let island = islandOnRight ? insets.trailing : insets.leading
+        let free = islandOnRight ? insets.leading : insets.trailing
+        let freeEdge: Edge.Set = islandOnRight ? .leading : .trailing
+        let column = VStack(spacing: 12) {
+            // Partly into the strip too: at the header's height the screen's rounded corner is
+            // only about 15 points in from the edge.
+            header
+                .padding(freeEdge, max(free - 30, 0))
+            // Centred in the space under the header, where a thumb finds it from either side of
+            // the phone.
+            Spacer(minLength: 0)
+            controls
+                .padding(freeEdge, max(Self.edgeGap - Self.controlsPadding, 0))
+            Spacer(minLength: 0)
+        }
+        .frame(width: Self.columnWidth + free)
+        let text = captions
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // The caption list has margins of its own; inside the safe area they need not be
+            // as wide as at a bare screen edge.
+            .padding(islandOnRight ? .trailing : .leading, max(island - 12, 0))
+        return HStack(spacing: 0) {
+            if islandOnRight {
+                column
+                text
+            } else {
+                text
+                column
+            }
+        }
+        .ignoresSafeArea(.container, edges: .horizontal)
+    }
+
+    /// The controls column, inside the safe area.
+    private static let columnWidth: CGFloat = 120
+    /// From the edge of the screen to the controls.
+    private static let edgeGap: CGFloat = 20
+    private static let controlsPadding: CGFloat = 12
+
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 12) {
+        // In the narrow column on its side, the status goes under the indicator.
+        let layout = sideways ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
             listeningIndicator
-            Spacer()
+            if !sideways { Spacer() }
             if !simple {
                 Text(statusLine)
                     .font(.footnote.monospacedDigit())
@@ -108,7 +157,8 @@ struct LiveScreen: View {
                     .accessibilityIdentifier("engineStatus")
             }
         }
-        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, sideways ? Self.controlsPadding : 20)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
         // Simple mode keeps settings out of reach of an accidental tap: a supporter holds the top
@@ -239,10 +289,10 @@ struct LiveScreen: View {
                     // wrap as one centred block instead of hanging beside it.
                     Label("Past conversations", systemImage: "clock.arrow.circlepath")
                         .labelStyle(StackedLabelStyle(stacked: sideways))
-                        .font(.system(size: min(style.captionSize * 0.6, sideways ? 24 : 28),
+                        .font(.system(size: min(style.captionSize * 0.6, sideways ? 18 : 28),
                                       weight: .semibold, design: style.design))
                         .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity, minHeight: 64)
+                        .frame(maxWidth: .infinity, minHeight: sideways ? 52 : 64)
                         .padding(.vertical, sideways ? 8 : 0)
                 }
                 .buttonStyle(.bordered)
@@ -250,7 +300,7 @@ struct LiveScreen: View {
                 .accessibilityIdentifier("historyButton")
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, sideways ? Self.controlsPadding : 20)
         .padding(.top, 8)
         .padding(.bottom, 12)
     }
@@ -264,12 +314,15 @@ struct LiveScreen: View {
         // rather than filling the column, which made Stop the biggest thing on the screen.
         let compact = !live.lines.isEmpty && !sideways
         // Sized with the captions, but capped: past this, a bigger label only crowds the button.
-        let size = min(style.captionSize * (compact ? 0.8 : 1), 44)
+        let size = min(style.captionSize * (compact ? 0.8 : 1), sideways ? 28 : 44)
         return Button { model.toggle() } label: {
             Label(title, systemImage: icon)
+                // In the narrow column, so "Preparing…" fits rather than wrapping beside the icon.
+                .labelStyle(StackedLabelStyle(stacked: sideways))
                 .font(.system(size: size, weight: .bold, design: style.design))
+                .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: compact ? 88 : (sideways ? 120 : 140))
+                .frame(minHeight: compact ? 88 : (sideways ? 84 : 140))
         }
         .buttonStyle(.borderedProminent)
         .buttonBorderShape(.roundedRectangle(radius: 28))

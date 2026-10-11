@@ -13,7 +13,7 @@ import Foundation
 ///     -reset                forget settings and delete every transcript first
 ///     -screen <name>        open on live | history | settings | latest (newest transcript) | changelog | dedication
 ///     -simple <0|1>  -text-size <pt>  -theme <name>  -engine <name>   override a setting
-///     -orientation <portrait|landscape>   rotate the window
+///     -orientation <portrait|landscape|landscape-left>   rotate the window (landscape: home side right)
 ///     -setup <0|1>          show the first-run screens, or skip them. Default: show them until
 ///                           finished once, except with -autostart
 ///     -fake-download <s>    with -replay: act out a first-run download taking this long
@@ -34,6 +34,8 @@ public struct LaunchOptions: Equatable, Sendable {
     public var engine: EngineChoice?
     /// Rotate the window on launch. The simulator has no command-line way to rotate.
     public var landscape: Bool?
+    /// Turned the other way: the Dynamic Island on the right.
+    public var landscapeLeft = false
     public var setup: Bool?
     public var fakeDownload: Double?
     public var fakeDownloadFails = false
@@ -61,7 +63,10 @@ public struct LaunchOptions: Equatable, Sendable {
             case "-text-size": textSize = value().flatMap(Double.init)
             case "-theme": theme = value().flatMap(AppSettings.Theme.init(rawValue:))
             case "-engine": engine = value().flatMap(EngineChoice.init(rawValue:))
-            case "-orientation": landscape = value().map { $0 == "landscape" }
+            case "-orientation":
+                let side = value()
+                landscape = side.map { $0.hasPrefix("landscape") }
+                landscapeLeft = side == "landscape-left"
             case "-setup": setup = value().map { $0 == "1" || $0 == "true" }
             case "-fake-download": fakeDownload = value().flatMap(Double.init)
             case "-fake-download-fail": fakeDownloadFails = true
