@@ -135,3 +135,9 @@ Open Captions is built on open models and libraries, including NVIDIA's speech m
 [FluidAudio](https://github.com/FluidInference/FluidAudio) and
 [ChatLayout](https://github.com/ekazaev/ChatLayout). Each one and its licence is listed in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Supporting the project
+
+Open Captions is free and will stay free, with no ads and nothing to buy. If it helps you or
+someone you look after and you'd like to chip in, you can
+[sponsor it on GitHub](https://github.com/sponsors/nlwstein).
