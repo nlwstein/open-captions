@@ -1,0 +1,133 @@
+name: Release
+
+# Cuts a release: a vX.Y.Z tag, an unsigned sideload IPA built with that version, and a GitHub
+# Release with the IPA, its checksum and notes grouped from the conventional commits.
+#
+# - Run it by hand (Actions > Release > Run workflow). With bump=auto the version comes from the
+#   commits since the last tag (Scripts/release.py); the tag is created when the release is.
+# - Or push a tag yourself (git tag v1.2.3 && git push github v1.2.3) to release that exact version.
+#
+# The tag is made on GitHub only. To mirror it to GitLab: git fetch github --tags && git push origin --tags
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump (auto reads the conventional commits since the last release)
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Must match ci.yml, so the release reuses the punctuation model CI already built.
+  PUNCTUATION_CACHE_VERSION: v1
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.v.outputs.build }}
+      sha: ${{ steps.v.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: v
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            version=${GITHUB_REF_NAME#v}
+          else
+            version=$(python3 -I Scripts/release.py next-version --bump "${BUMP:-auto}")
+            if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+              echo "::error::v$version is already tagged"; exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$version (build $(git rev-list --count HEAD)) from $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+  ipa:
+    name: Sideload IPA
+    needs: version
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+          fetch-depth: 0
+      - name: Select Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - id: model
+        uses: actions/cache/restore@v6
+        with:
+          path: .models/punctuation
+          key: punctuation-${{ env.PUNCTUATION_CACHE_VERSION }}-${{ runner.os }}-${{ hashFiles('Scripts/make-punctuation-model.sh', 'Scripts/punctuation_model.py') }}
+      # Only on a cache miss, when make-ipa.sh has to build the model itself.
+      - if: steps.model.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: false
+      - name: Install xcodegen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Build the IPA
+        run: Scripts/make-ipa.sh "${{ needs.version.outputs.version }}" "${{ needs.version.outputs.build }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ipa
+          path: .ipa/OpenCaptions-*.ipa*
+          if-no-files-found: error
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ipa-build-log
+          path: .ipa/build.log
+
+  release:
+    name: GitHub Release
+    needs: [version, ipa]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v7
+        with:
+          name: ipa
+          path: dist
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          python3 -I Scripts/release.py notes "$VERSION" > notes.md
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+          (cd dist && shasum -a 256 -c "OpenCaptions-$VERSION.ipa.sha256")
+          # On a dispatch the tag does not exist yet; gh creates it at SHA with the release.
+          gh release create "v$VERSION" --target "$SHA" \
+            --title "Open Captions $VERSION" --notes-file notes.md \
+            "dist/OpenCaptions-$VERSION.ipa" "dist/OpenCaptions-$VERSION.ipa.sha256"

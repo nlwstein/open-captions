@@ -125,3 +125,58 @@ jobs:
         with:
           name: app-build-log
           path: build.log
+
+  # The release scripts' own tests: versioning from conventional commits, and release notes.
+  scripts:
+    name: Release scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test Scripts/release.py
+        run: python3 -m unittest discover -s Scripts -p 'test_*.py' -v
+
+  # The unsigned sideload IPA, built exactly as a release builds it, so a broken release build
+  # shows up here rather than when a version is cut. Scripts/make-ipa.sh checks the bundle.
+  ipa:
+    name: Sideload IPA (device build)
+    needs: punctuation-model
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # For the build number (commit count), the next version, and the in-app changelog.
+          fetch-depth: 0
+      - name: Select Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - uses: actions/cache/restore@v6
+        with:
+          path: .models/punctuation
+          key: ${{ needs.punctuation-model.outputs.key }}
+          fail-on-cache-miss: true
+      - name: Install xcodegen
+        run: command -v xcodegen || brew install xcodegen
+      - uses: actions/cache@v6
+        with:
+          path: .ipa/dd/SourcePackages
+          key: ipa-spm-${{ runner.os }}-${{ hashFiles('Package.resolved', 'App/project.yml') }}
+          restore-keys: ipa-spm-${{ runner.os }}-
+      - name: Build the IPA
+        run: |
+          # Versioned as the next release would be; 0.0.0 when nothing has changed since the last.
+          version=$(python3 -I Scripts/release.py next-version 2>/dev/null || echo 0.0.0)
+          Scripts/make-ipa.sh "$version" "$(git rev-list --count HEAD)"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: OpenCaptions-ipa
+          path: .ipa/OpenCaptions-*.ipa*
+          retention-days: 7
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ipa-build-log
+          path: .ipa/build.log
