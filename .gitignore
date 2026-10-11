@@ -25,3 +25,7 @@ xcuserdata/
 
 # Python bytecode from `python -m py_compile` on the Scripts/ helpers
 __pycache__/
+
+# The iOS app: generated Info.plist, and Scripts/sim.sh build output, screenshots and pulled diagnostics
+App/Generated/
+.sim/

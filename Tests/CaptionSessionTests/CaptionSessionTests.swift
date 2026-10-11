@@ -1,0 +1,239 @@
+import CaptionKit
+@testable import CaptionSession
+import XCTest
+
+final class SavedSessionTests: XCTestCase {
+
+    func testSpeakersAreNumberedByFirstAppearanceNotSlot() {
+        let session = SavedSession(turns: [
+            SavedTurn(speaker: 2, text: "hello", start: 0, end: 1),
+            SavedTurn(speaker: 0, text: "hi", start: 1, end: 2),
+            SavedTurn(speaker: 2, text: "how are you", start: 2, end: 3),
+        ])
+        XCTAssertEqual(session.label(for: 2), "Speaker 1")
+        XCTAssertEqual(session.label(for: 0), "Speaker 2")
+        XCTAssertEqual(session.label(for: nil), "Someone")
+    }
+
+    func testNamesReplaceNumbers() {
+        var session = SavedSession(turns: [SavedTurn(speaker: 1, text: "x", start: 0, end: 1)])
+        session.names[1] = "Dr Patel"
+        XCTAssertEqual(session.label(for: 1), "Dr Patel")
+    }
+
+    func testSearchIgnoresCaseAndAccents() {
+        let session = SavedSession(turns: [SavedTurn(speaker: 0, text: "The Café is open",
+                                                     start: 0, end: 1)])
+        XCTAssertTrue(session.matches("cafe"))
+        XCTAssertTrue(session.matches(""))
+        XCTAssertFalse(session.matches("closed"))
+    }
+
+    func testTitlesReadTheWayAPersonWouldSayThem() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let locale = Locale(identifier: "en_US")
+        let now = ISO8601DateFormatter().date(from: "2026-10-11T18:00:00Z")!  // a Sunday
+        func at(_ s: String) -> Date { ISO8601DateFormatter().date(from: s)! }
+
+        XCTAssertEqual(SessionTitle.make(for: at("2026-10-11T09:00:00Z"), now: now,
+                                         calendar: calendar, locale: locale), "Today, morning")
+        XCTAssertEqual(SessionTitle.make(for: at("2026-10-10T14:00:00Z"), now: now,
+                                         calendar: calendar, locale: locale), "Yesterday, afternoon")
+        XCTAssertEqual(SessionTitle.make(for: at("2026-10-07T19:00:00Z"), now: now,
+                                         calendar: calendar, locale: locale), "Wednesday evening")
+        XCTAssertEqual(SessionTitle.make(for: at("2026-09-01T23:00:00Z"), now: now,
+                                         calendar: calendar, locale: locale),
+                       "Tuesday, September 1, night")
+    }
+
+    func testExportNamesEveryTurn() {
+        var session = SavedSession(turns: [
+            SavedTurn(speaker: 0, text: "Take one tablet twice a day.", start: 0, end: 2),
+            SavedTurn(speaker: 1, text: "With food?", start: 2, end: 3),
+        ])
+        session.names[0] = "Doctor"
+        let text = TranscriptExport.plainText(session, title: "Visit")
+        XCTAssertTrue(text.hasPrefix("Visit\n"))
+        XCTAssertTrue(text.contains("Doctor: Take one tablet twice a day."))
+        XCTAssertTrue(text.contains("Speaker 2: With food?"))
+    }
+}
+
+final class CaptionLinesTests: XCTestCase {
+
+    func testNameShownOnlyWhenTheSpeakerChanges() {
+        let lines = CaptionLines.make(turns: [
+            SavedTurn(speaker: 3, text: "a", start: 0, end: 1),
+            SavedTurn(speaker: 3, text: "b", start: 2, end: 3),
+            SavedTurn(speaker: 1, text: "c", start: 3, end: 4, contested: true),
+            SavedTurn(speaker: 3, text: "", start: 4, end: 5),
+            SavedTurn(speaker: 3, text: "d", start: 5, end: 6),
+        ], names: [1: "Ann"], openLast: true)
+        XCTAssertEqual(lines.map(\.text), ["a", "b", "c", "d"])
+        XCTAssertEqual(lines.map(\.startsNewSpeaker), [true, false, true, true])
+        XCTAssertEqual(lines.map(\.speakerNumber), [1, 1, 2, 1])
+        XCTAssertEqual(lines.map(\.label), ["Speaker 1", "Speaker 1", "Ann", "Speaker 1"])
+        XCTAssertEqual(lines.map(\.isOpen), [false, false, false, true])
+        XCTAssertTrue(lines[2].contested)
+    }
+}
+
+final class TranscriptStoreTests: XCTestCase {
+    var directory: URL!
+
+    override func setUp() {
+        directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("store-\(UUID().uuidString)")
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testRoundTripNewestFirst() throws {
+        let store = TranscriptStore(directory: directory)
+        let old = SavedSession(startedAt: Date(timeIntervalSince1970: 1_000),
+                               turns: [SavedTurn(speaker: 0, text: "old", start: 0, end: 1)],
+                               names: [0: "Mum"])
+        let new = SavedSession(startedAt: Date(timeIntervalSince1970: 2_000))
+        try store.save(old)
+        try store.save(new)
+        let all = store.all()
+        XCTAssertEqual(all.map(\.id), [new.id, old.id])
+        XCTAssertEqual(store.load(old.id), old)
+        XCTAssertEqual(store.load(old.id)?.names[0], "Mum")
+    }
+
+    func testDamagedFileDoesNotHideTheRest() throws {
+        let store = TranscriptStore(directory: directory)
+        try store.save(SavedSession())
+        try Data("{not json".utf8).write(to: directory.appendingPathComponent("broken.json"))
+        XCTAssertEqual(store.all().count, 1)
+    }
+
+    func testPruneKeepsRecent() throws {
+        let store = TranscriptStore(directory: directory)
+        let now = Date()
+        try store.save(SavedSession(startedAt: now.addingTimeInterval(-40 * 86_400)))
+        try store.save(SavedSession(startedAt: now.addingTimeInterval(-1 * 86_400)))
+        XCTAssertEqual(store.prune(olderThanDays: 30, now: now), 1)
+        XCTAssertEqual(store.all().count, 1)
+    }
+}
+
+final class ReplayTests: XCTestCase {
+    let script = ReplayScript(turns: [
+        SavedTurn(speaker: 0, text: "one two three four", start: 0, end: 4),
+        SavedTurn(speaker: 1, text: "five six", start: 5, end: 7, contested: true),
+    ])
+
+    func testTurnsRevealWordsAtSpeakingPace() {
+        XCTAssertEqual(script.turns(at: -1), [])
+        let early = script.turns(at: 1.5)
+        XCTAssertEqual(early.map(\.text), ["one two"])
+        XCTAssertTrue(early[0].isOpen)
+
+        let later = script.turns(at: 6)
+        XCTAssertEqual(later.map(\.text), ["one two three four", "five six"])
+        XCTAssertEqual(later.map(\.isOpen), [false, true])
+        XCTAssertTrue(later[1].isContested)
+    }
+
+    func testLoadsAHarnessDump() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("dump-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("""
+        {"settings": "x", "turns": [
+          {"speaker": 1, "start": 2.0, "end": 3.0, "overlapSeconds": 0.0, "open": false, "text": "b"},
+          {"speaker": null, "start": 0.0, "end": 1.0, "overlapSeconds": 0.5, "open": false, "text": "a"}
+        ]}
+        """.utf8).write(to: url)
+        let loaded = try ReplayScript.load(url)
+        XCTAssertEqual(loaded.turns.map(\.text), ["a", "b"])
+        XCTAssertEqual(loaded.turns[0].contested, true)
+        XCTAssertNil(loaded.turns[0].speaker)
+    }
+}
+
+final class SettingsTests: XCTestCase {
+
+    func testOldSettingsFilesStillLoad() throws {
+        let settings = try JSONDecoder().decode(AppSettings.self,
+                                                from: Data(#"{"textSize": 60, "theme": "dark"}"#.utf8))
+        XCTAssertEqual(settings.textSize, 60)
+        XCTAssertEqual(settings.theme, .dark)
+        XCTAssertTrue(settings.simpleMode)
+        XCTAssertEqual(settings.engine, .nemotron)
+    }
+
+    func testLaunchArguments() {
+        let options = LaunchOptions(arguments: [
+            "/app", "-replay", "/tmp/a.json", "-speed", "4", "-autostart", "-screen", "history",
+            "-simple", "0", "-text-size", "48", "-theme", "highContrastDark", "-engine", "unified",
+            "-NSSomething", "YES",
+        ])
+        XCTAssertEqual(options.replay?.path, "/tmp/a.json")
+        XCTAssertEqual(options.speed, 4)
+        XCTAssertTrue(options.autostart)
+        XCTAssertEqual(options.screen, .history)
+        var settings = AppSettings()
+        options.apply(to: &settings)
+        XCTAssertFalse(settings.simpleMode)
+        XCTAssertEqual(settings.textSize, 48)
+        XCTAssertEqual(settings.theme, .highContrastDark)
+        XCTAssertEqual(settings.engine, .unified)
+    }
+}
+
+@MainActor
+final class LiveConversationTests: XCTestCase {
+
+    func testAReplayedSessionIsSavedAndLogged() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("live-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = TranscriptStore(directory: root.appendingPathComponent("t"))
+        let script = ReplayScript(turns: [
+            SavedTurn(speaker: 0, text: "good morning", start: 0, end: 1),
+            SavedTurn(speaker: 1, text: "morning to you", start: 1.2, end: 2),
+        ])
+        let live = LiveConversation(store: store, diagnosticsDirectory: root.appendingPathComponent("d")) {
+            LiveConversation.Configuration(
+                engineKey: "replay", engineName: "replay",
+                makeEngine: { ReplayEngine(script: script) },
+                makeSource: { ClockAudioSource(speed: 50, limitSeconds: 3) })
+        }
+        await live.start()
+
+        XCTAssertEqual(live.phase, .idle)
+        let saved = try XCTUnwrap(store.all().first)
+        XCTAssertEqual(saved.turns.map(\.text), ["good morning", "morning to you"])
+        XCTAssertNotNil(saved.endedAt)
+
+        let log = try String(contentsOf: root.appendingPathComponent("d/\(saved.id.uuidString).jsonl"),
+                             encoding: .utf8)
+        XCTAssertTrue(log.contains(#""event":"start""#))
+        XCTAssertTrue(log.contains(#""event":"end""#))
+        XCTAssertFalse(log.contains("good morning"), "diagnostics must not contain the words")
+    }
+
+    func testStopEndsTheSessionAndKeepsWhatWasHeard() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("live-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = TranscriptStore(directory: root)
+        let script = ReplayScript(turns: [SavedTurn(speaker: 0, text: "a b c d e f", start: 0, end: 60)])
+        let live = LiveConversation(store: store, diagnosticsDirectory: root.appendingPathComponent("d")) {
+            LiveConversation.Configuration(
+                engineKey: "replay", engineName: "replay",
+                makeEngine: { ReplayEngine(script: script) },
+                makeSource: { ClockAudioSource(speed: 20) })
+        }
+        let running = Task { await live.start() }
+        while live.turns.isEmpty { try await Task.sleep(nanoseconds: 10_000_000) }
+        await live.stop()
+        await running.value
+        XCTAssertEqual(live.phase, .idle)
+        XCTAssertEqual(store.all().count, 1)
+        XCTAssertFalse(live.turns.contains(where: \.isOpen))
+    }
+}

@@ -9,6 +9,7 @@ let package = Package(
     ],
     products: [
         .library(name: "CaptionKit", targets: ["CaptionKit"]),
+        .library(name: "CaptionSession", targets: ["CaptionSession"]),
         .executable(name: "caption-harness", targets: ["CaptionHarness"]),
     ],
     dependencies: [
@@ -31,6 +32,17 @@ let package = Package(
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        // Everything the app does that is not drawing: running a session, keeping transcripts,
+        // settings, and the replay engine the simulator is driven with. A library of its own so it
+        // can be tested with `swift test` on the Mac, and so the app target is views and nothing else.
+        .target(
+            name: "CaptionSession",
+            dependencies: [
+                "CaptionKit",
+                .product(name: "FluidAudio", package: "FluidAudio"),
+            ],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .executableTarget(
             name: "CaptionHarness",
             dependencies: [
@@ -46,6 +58,11 @@ let package = Package(
         .testTarget(
             name: "CaptionKitTests",
             dependencies: ["CaptionKit"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "CaptionSessionTests",
+            dependencies: ["CaptionSession", "CaptionKit"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

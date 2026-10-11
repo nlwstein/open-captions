@@ -1,0 +1,62 @@
+# The iOS app. Generated with xcodegen so the project file is not hand-merged:
+#   cd App && xcodegen generate
+# The .xcodeproj is not committed; Scripts/sim.sh regenerates it on every build.
+name: LiveCaption
+options:
+  bundleIdPrefix: io.nlws
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+packages:
+  LiveCaption:
+    path: ..
+targets:
+  LiveCaption:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Resources
+      - path: ../THIRD_PARTY_NOTICES.md
+        buildPhase: resources
+    dependencies:
+      - package: LiveCaption
+        product: CaptionSession
+      - package: LiveCaption
+        product: CaptionKit
+    info:
+      path: Generated/Info.plist
+      properties:
+        CFBundleDisplayName: Captions
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+        NSMicrophoneUsageDescription: >-
+          Captions listens to the conversation around you and shows it as text.
+          Everything stays on this phone.
+        # Keep captioning with the screen locked. Recording only; nothing is played.
+        UIBackgroundModes: [audio]
+        # A simplified screen is provided for Assistive Access (see AssistiveAccess scene).
+        UISupportsAssistiveAccess: true
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        ITSAppUsesNonExemptEncryption: false
+        # Lets Finder (and Scripts/sim.sh) reach Documents/Diagnostics.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.nlws.livecaption
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

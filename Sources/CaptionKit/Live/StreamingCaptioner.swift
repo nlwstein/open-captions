@@ -52,6 +52,16 @@ public struct StreamedTurn: Sendable, Equatable {
     /// streaming timeline applies no padding, so two slots are only ever active at once because
     /// the model put both over threshold on the same frame.
     public static let contestedThreshold = 0.3
+
+    public init(speaker: Int?, text: String, start: Double, end: Double, isOpen: Bool,
+                overlapSeconds: Double = 0) {
+        self.speaker = speaker
+        self.text = text
+        self.start = start
+        self.end = end
+        self.isOpen = isOpen
+        self.overlapSeconds = overlapSeconds
+    }
 }
 
 /// One stretch of speech the diarizer currently attributes to one slot.
@@ -159,6 +169,13 @@ public struct CaptionerUpdate: Sendable {
     /// which frame it is not allowed to drop, or the last words of a conversation can be decoded and
     /// never drawn.
     public var isFinal: Bool
+
+    public init(turns: [StreamedTurn], status: CaptionerStatus, audio: [Float], isFinal: Bool) {
+        self.turns = turns
+        self.status = status
+        self.audio = audio
+        self.isFinal = isFinal
+    }
 }
 
 /// Live captioning from a stream of audio: Parakeet EOU for the words, Sortformer for the speakers.
