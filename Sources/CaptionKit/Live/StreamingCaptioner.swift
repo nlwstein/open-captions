@@ -303,6 +303,9 @@ public final class StreamingCaptioner: @unchecked Sendable {
     private let nemotronAsr: StreamingNemotronAsrManager?
     private let diarizer: SortformerDiarizer
 
+    /// A bare `▁` token arrived and the word it opens has not yet. See `group`.
+    private var pendingWordBoundary = false
+
     public init(options: Options = Options()) {
         self.options = options
 
@@ -381,6 +384,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
         }
 
         var words: [StreamedWord] = []
+        pendingWordBoundary = false
         var consumed = 0
         var clock = 0.0
 
@@ -503,7 +507,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
         // note on `unifiedAsr` for why its own word helper cannot be used.
         if let unifiedAsr {
             let tokens = await unifiedAsr.consumeTokenTimings()
-            Self.group(tokens, into: &words)
+            Self.group(tokens, into: &words, pendingBoundary: &pendingWordBoundary)
             return consumed + tokens.count
         }
 
@@ -514,7 +518,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
         if let nemotronAsr {
             let timings = await nemotronAsr.getTokenTimings()
             guard consumed < timings.count else { return consumed }
-            Self.group(Array(timings[consumed...]), into: &words)
+            Self.group(Array(timings[consumed...]), into: &words, pendingBoundary: &pendingWordBoundary)
             return timings.count
         }
 
@@ -533,7 +537,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
             let token = tokens[index]
             let at = Double(stamps[index]) / 1000
             let text = token.replacingOccurrences(of: "\u{2581}", with: " ")
-            let startsWord = token.hasPrefix("\u{2581}") || token.hasPrefix(" ")
+            let startsWord = token.hasPrefix("\u{2581}") || token.hasPrefix(" ") || pendingWordBoundary
 
             if startsWord || words.isEmpty {
                 if !words.isEmpty {
@@ -541,7 +545,9 @@ public final class StreamingCaptioner: @unchecked Sendable {
                     words[words.count - 1].end = min(at, previous.start + Self.maxInferredWordSeconds)
                 }
                 let trimmed = text.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty else { continue }
+                // A bare boundary marker: the word it opens is the next piece. See `group`.
+                guard !trimmed.isEmpty else { pendingWordBoundary = true; continue }
+                pendingWordBoundary = false
                 words.append(StreamedWord(text: trimmed, start: at, end: at))
             } else {
                 words[words.count - 1].text += text
@@ -565,13 +571,25 @@ public final class StreamingCaptioner: @unchecked Sendable {
     /// End times only ever move forward, because FluidAudio's back-fill can shorten the token
     /// before this one. A word that ended before it started would make the turn builder's midpoint
     /// arithmetic nonsense, and holding the maximum costs at most one frame.
-    private static func group(_ timings: [TokenTiming], into words: inout [StreamedWord]) {
+    ///
+    /// A token that is *only* a boundary marker is not noise. Nemotron's vocabulary has a standalone
+    /// `▁` (id 941) and no `▁very` or `▁x…` pieces, so it spells "very" as `▁` + `very`. Dropping
+    /// the empty token glued the next piece onto the previous word — "notvegetarian",
+    /// "Houstonversus" — so the boundary is held in `pendingBoundary` until a piece arrives, across
+    /// calls if need be.
+    static func group(_ timings: [TokenTiming], into words: inout [StreamedWord],
+                      pendingBoundary: inout Bool) {
         for timing in timings {
             let text = timing.token.replacingOccurrences(of: "\u{2581}", with: " ")
             let trimmed = text.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty else { continue }
+            guard !trimmed.isEmpty else {
+                if text.hasPrefix(" ") { pendingBoundary = true }
+                continue
+            }
+            let startsWord = text.hasPrefix(" ") || pendingBoundary
+            pendingBoundary = false
 
-            if text.hasPrefix(" ") || words.isEmpty {
+            if startsWord || words.isEmpty {
                 words.append(StreamedWord(text: trimmed,
                                           start: timing.startTime,
                                           end: max(timing.endTime, timing.startTime)))
