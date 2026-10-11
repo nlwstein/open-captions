@@ -95,12 +95,16 @@ jobs:
         with:
           name: ipa
           path: .ipa/OpenCaptions-*.ipa*
+          # .ipa/ is a dot directory, which upload-artifact skips by default.
+          include-hidden-files: true
           if-no-files-found: error
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: ipa-build-log
           path: .ipa/build.log
+          # .ipa/ is a dot directory, which upload-artifact skips by default.
+          include-hidden-files: true
 
   release:
     name: GitHub Release
