@@ -50,6 +50,8 @@ cmd=${1:-}; shift || true
 case "$cmd" in
   build)
     mkdir -p "$OUT"
+    # The punctuation model is bundled from .models/punctuation; built once, not committed.
+    Scripts/make-punctuation-model.sh
     (cd App && xcodegen generate --quiet)
     set +e
     xcodebuild -project App/LiveCaption.xcodeproj -scheme LiveCaption \

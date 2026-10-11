@@ -22,6 +22,15 @@ They are not part of this repository.
 The Hugging Face cards for some of FluidInference's conversions name a different licence from
 NVIDIA's originals. The terms above are NVIDIA's, which are the ones that govern the weights.
 
+## Punctuation model
+
+Bundled with the app rather than downloaded: a Core ML conversion, made by
+`Scripts/punctuation_model.py`, of
+
+- **punct_cap_seg_en** (`1-800-BAD-CODE/punct_cap_seg_en`), which adds punctuation, capitals and
+  sentence ends to the captions. Apache License 2.0 (full text under swift-argument-parser
+  below). https://huggingface.co/1-800-BAD-CODE/punct_cap_seg_en
+
 ## Test recordings
 
 The repository's `ami-meeting` fixtures are excerpts of the AMI Meeting Corpus, CC-BY-4.0,

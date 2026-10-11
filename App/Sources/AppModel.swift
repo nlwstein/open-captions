@@ -52,7 +52,7 @@ final class AppModel {
         showingSetup = launch.showsSetup(setupDone: settingsStore.settings.setupDone)
         fakeDownload.failuresLeft = launch.fakeDownloadFails ? 1 : 0
 
-        live = LiveConversation(store: store) { [unowned self] in self.configuration() }
+        live = LiveConversation(store: store, formatter: .bundled()) { [unowned self] in self.configuration() }
         if settings.keepDays > 0 { store.prune(olderThanDays: settings.keepDays) }
         reloadHistory()
     }

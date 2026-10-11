@@ -16,6 +16,11 @@ section() {  # title, file
 
 {
   cat Scripts/notices-header.md
+  # An app-only package (App/project.yml), so it is not in SwiftPM's checkouts; its licence is
+  # kept in Scripts/licenses. Pinned exactly, so the text cannot drift from the code.
+  printf '### ChatLayout (MIT) — Eugene Kazaev\n\nhttps://github.com/ekazaev/ChatLayout — the layout of the caption list.\n\n~~~~\n'
+  cat Scripts/licenses/ChatLayout-LICENSE
+  printf '~~~~\n\n'
   section "FluidAudio (Apache-2.0) — FluidInference" "$CHECKOUTS/FluidAudio/LICENSE"
   while IFS= read -r f; do
     section "FluidAudio bundles: ${f#"$CHECKOUTS"/FluidAudio/ThirdPartyLicenses/}" "$f"

@@ -87,10 +87,18 @@ struct TranscriptScreen: View {
 
     private var simple: Bool { model.settings.simpleMode || assistive }
 
+    /// Punctuation, as on the live screen. Reading `revision` redraws as paragraphs are done.
+    private var format: CaptionLines.Format {
+        let formatter = model.live.formatter
+        _ = formatter.revision
+        return { formatter.formatted($0, closed: $1) }
+    }
+
     var body: some View {
         Group {
             if let session = model.session(id) {
-                TranscriptView(lines: CaptionLines.make(turns: session.turns, names: session.names),
+                TranscriptView(lines: CaptionLines.make(turns: session.turns, names: session.names,
+                                                        format: format),
                                showSpeakers: model.settings.showSpeakers,
                                onTapSpeaker: simple ? nil : { line in
                                    newName = session.names[line.speaker ?? -1] ?? ""
@@ -99,7 +107,7 @@ struct TranscriptScreen: View {
                 .navigationTitle(SessionTitle.make(for: session.startedAt))
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        ShareLink(item: TranscriptExport.plainText(session)) {
+                        ShareLink(item: TranscriptExport.plainText(session, format: format)) {
                             Label("Share", systemImage: "square.and.arrow.up")
                         }
                     }

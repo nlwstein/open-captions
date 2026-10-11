@@ -52,11 +52,18 @@ public final class LiveConversation {
 
     public var isRunning: Bool { phase == .listening || phase == .finishing }
 
+    /// Punctuates what the engine wrote, in the background. Shared with past conversations.
+    public let formatter: CaptionFormatter
+
     /// The conversation as the screen draws it.
     public var lines: [CaptionLine] {
         guard let session else { return [] }
+        // Read so the screen redraws when a paragraph has been punctuated.
+        _ = formatter.revision
+        let formatter = self.formatter
         return CaptionLines.make(turns: session.turns, names: session.names,
-                                 openLast: isRunning && (turns.last?.isOpen ?? false))
+                                 openLast: isRunning && (turns.last?.isOpen ?? false),
+                                 format: { formatter.formatted($0, closed: $1) })
     }
 
     private let store: TranscriptStore
@@ -75,8 +82,10 @@ public final class LiveConversation {
 
     public init(store: TranscriptStore,
                 diagnosticsDirectory: URL = DiagnosticsLog.standardDirectory(),
+                formatter: CaptionFormatter? = nil,
                 configuration: @escaping @MainActor () -> Configuration) {
         self.store = store
+        self.formatter = formatter ?? .none()
         self.diagnosticsDirectory = diagnosticsDirectory
         self.configuration = configuration
     }

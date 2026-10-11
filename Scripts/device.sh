@@ -59,6 +59,8 @@ case "$cmd" in
     # Built for the device itself, not a generic one: that is what registers it with the team
     # and puts it in the provisioning profile.
     d=$(device)
+    # The punctuation model is bundled from .models/punctuation; built once, not committed.
+    Scripts/make-punctuation-model.sh
     (cd App && xcodegen generate --quiet)
     set +e
     xcodebuild -project App/LiveCaption.xcodeproj -scheme LiveCaption \

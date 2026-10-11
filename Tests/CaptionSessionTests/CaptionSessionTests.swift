@@ -69,13 +69,47 @@ final class CaptionLinesTests: XCTestCase {
             SavedTurn(speaker: 1, text: "c", start: 3, end: 4, contested: true),
             SavedTurn(speaker: 3, text: "", start: 4, end: 5),
             SavedTurn(speaker: 3, text: "d", start: 5, end: 6),
+            SavedTurn(speaker: 3, text: "e", start: 10, end: 11),
         ], names: [1: "Ann"], openLast: true)
-        XCTAssertEqual(lines.map(\.text), ["a", "b", "c", "d"])
-        XCTAssertEqual(lines.map(\.startsNewSpeaker), [true, false, true, true])
-        XCTAssertEqual(lines.map(\.speakerNumber), [1, 1, 2, 1])
-        XCTAssertEqual(lines.map(\.label), ["Speaker 1", "Speaker 1", "Ann", "Speaker 1"])
+        // One speaker's turns are one paragraph, until a long pause.
+        XCTAssertEqual(lines.map(\.text), ["a b", "c", "d", "e"])
+        XCTAssertEqual(lines.map(\.id), [0, 2, 4, 5])
+        XCTAssertEqual(lines.map(\.startsNewSpeaker), [true, true, true, false])
+        XCTAssertEqual(lines.map(\.speakerNumber), [1, 2, 1, 1])
+        XCTAssertEqual(lines.map(\.label), ["Speaker 1", "Ann", "Speaker 1", "Speaker 1"])
         XCTAssertEqual(lines.map(\.isOpen), [false, false, false, true])
-        XCTAssertTrue(lines[2].contested)
+        XCTAssertTrue(lines[1].contested)
+    }
+
+    func testLongRunsAreSplitIntoParagraphs() {
+        let sentence = Array(repeating: "word", count: 30).joined(separator: " ")
+        let turns = (0..<10).map { SavedTurn(speaker: 0, text: sentence, start: Double($0), end: Double($0) + 0.9) }
+        let lines = CaptionLines.make(turns: turns)
+        XCTAssertGreaterThan(lines.count, 2)
+        XCTAssertTrue(lines.allSatisfy { $0.text.split(separator: " ").count <= CaptionLines.paragraphWords + 30 })
+        XCTAssertEqual(lines.dropFirst().map(\.startsNewSpeaker), Array(repeating: false, count: lines.count - 1))
+    }
+
+    func testFinishedTurnsArePunctuatedAndTheNewestShownAsIs() {
+        var asked: [([String], Bool)] = []
+        let format: CaptionLines.Format = { turns, closed in
+            asked.append((turns, closed))
+            return turns.joined(separator: " ").capitalized + "."
+        }
+        let turns = [
+            SavedTurn(speaker: 0, text: "hello there", start: 0, end: 1),
+            SavedTurn(speaker: 1, text: "how are you", start: 1, end: 2),
+            SavedTurn(speaker: 1, text: "i was saying", start: 2.5, end: 3),
+            SavedTurn(speaker: 1, text: "that we should", start: 3.5, end: 4),
+        ]
+        let lines = CaptionLines.make(turns: turns, openLast: true, format: format)
+        XCTAssertEqual(lines.map(\.text), ["Hello There.", "How Are You I Was Saying. That we should"])
+        XCTAssertEqual(asked.map(\.0), [["hello there"], ["how are you", "i was saying"]])
+        XCTAssertEqual(asked.map(\.1), [true, false])
+
+        // Not ready yet: the engine's text.
+        XCTAssertEqual(CaptionLines.make(turns: turns, openLast: true, format: { _, _ in nil }).map(\.text),
+                       ["hello there", "how are you i was saying that we should"])
     }
 }
 

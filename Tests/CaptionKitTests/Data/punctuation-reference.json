@@ -1,0 +1,944 @@
+{
+ "tokens": {
+  "11": [
+   401
+  ],
+  "1990s": [
+   3144,
+   8
+  ],
+  "3.5": [
+   302,
+   4,
+   1267
+  ],
+  "a": [
+   9
+  ],
+  "actually": [
+   576
+  ],
+  "again": [
+   226
+  ],
+  "all": [
+   54
+  ],
+  "an": [
+   42
+  ],
+  "and": [
+   10
+  ],
+  "andrea": [
+   9029
+  ],
+  "andrew": [
+   1701
+  ],
+  "april": [
+   502
+  ],
+  "back": [
+   97
+  ],
+  "bag": [
+   2439
+  ],
+  "be": [
+   24
+  ],
+  "before": [
+   103
+  ],
+  "better": [
+   254
+  ],
+  "blood": [
+   1073
+  ],
+  "but": [
+   33
+  ],
+  "café": [
+   14459
+  ],
+  "call": [
+   429
+  ],
+  "called": [
+   236
+  ],
+  "came": [
+   256
+  ],
+  "can": [
+   50
+  ],
+  "changed": [
+   921
+  ],
+  "children": [
+   221
+  ],
+  "coming": [
+   386
+  ],
+  "control": [
+   527
+  ],
+  "covid-19": [
+   114,
+   0,
+   4205
+  ],
+  "craig": [
+   4229
+  ],
+  "david": [
+   862
+  ],
+  "day": [
+   108
+  ],
+  "days": [
+   215
+  ],
+  "dear": [
+   4192
+  ],
+  "designer": [
+   4372
+  ],
+  "designing": [
+   12754
+  ],
+  "did": [
+   137
+  ],
+  "do": [
+   77
+  ],
+  "doctor": [
+   1712
+  ],
+  "does": [
+   279
+  ],
+  "doing": [
+   337
+  ],
+  "don't": [
+   107,
+   13,
+   31
+  ],
+  "door": [
+   1319
+  ],
+  "dose": [
+   1435
+  ],
+  "drive": [
+   1043
+  ],
+  "e-mail": [
+   861,
+   0,
+   20578
+  ],
+  "each": [
+   265
+  ],
+  "eight": [
+   603
+  ],
+  "end": [
+   202
+  ],
+  "even": [
+   125
+  ],
+  "everything": [
+   412
+  ],
+  "expert": [
+   2217
+  ],
+  "far-fetched": [
+   252,
+   0,
+   737,
+   31118
+  ],
+  "father": [
+   594
+  ],
+  "feel": [
+   270
+  ],
+  "feldman": [
+   27420
+  ],
+  "fine": [
+   1209
+  ],
+  "first": [
+   80
+  ],
+  "five": [
+   229
+  ],
+  "for": [
+   17
+  ],
+  "forget": [
+   2362
+  ],
+  "forty": [
+   10035
+  ],
+  "four": [
+   189
+  ],
+  "garden": [
+   1920
+  ],
+  "gets": [
+   1248
+  ],
+  "go": [
+   132
+  ],
+  "going": [
+   115
+  ],
+  "gonna": [
+   3123
+  ],
+  "good": [
+   133
+  ],
+  "grapefruit": [
+   27358
+  ],
+  "great": [
+   234
+  ],
+  "greg": [
+   4329
+  ],
+  "hard": [
+   334
+  ],
+  "hasn't": [
+   1550,
+   13,
+   31
+  ],
+  "have": [
+   26
+  ],
+  "he": [
+   21
+  ],
+  "he's": [
+   21,
+   13,
+   8
+  ],
+  "here": [
+   176
+  ],
+  "hi": [
+   4143
+  ],
+  "how": [
+   99
+  ],
+  "hundred": [
+   3793
+  ],
+  "hungry": [
+   6028
+  ],
+  "i": [
+   19
+  ],
+  "i'd": [
+   19,
+   13,
+   86
+  ],
+  "i'll": [
+   19,
+   13,
+   188
+  ],
+  "i'm": [
+   19,
+   13,
+   66
+  ],
+  "if": [
+   69
+  ],
+  "in": [
+   12
+  ],
+  "industrial": [
+   2739
+  ],
+  "interface": [
+   13202
+  ],
+  "introduce": [
+   4695
+  ],
+  "is": [
+   15
+  ],
+  "it": [
+   14
+  ],
+  "it's": [
+   14,
+   13,
+   8
+  ],
+  "juice": [
+   6209
+  ],
+  "just": [
+   70
+  ],
+  "keep": [
+   305
+  ],
+  "kettle": [
+   16215
+  ],
+  "kick": [
+   1751
+  ],
+  "kickoff": [
+   17239
+  ],
+  "kind": [
+   505
+  ],
+  "kitchen": [
+   2111
+  ],
+  "know": [
+   131
+  ],
+  "lake": [
+   2352
+  ],
+  "last": [
+   87
+  ],
+  "laura": [
+   4378
+  ],
+  "lease": [
+   9339
+  ],
+  "like": [
+   75
+  ],
+  "lisinopril": [
+   3936,
+   8,
+   4775,
+   12033,
+   627
+  ],
+  "lock": [
+   4210
+  ],
+  "longer": [
+   748
+  ],
+  "looks": [
+   848
+  ],
+  "luncher": [
+   4194,
+   212
+  ],
+  "make": [
+   126
+  ],
+  "manager": [
+   792
+  ],
+  "margaret": [
+   4613
+  ],
+  "marketing": [
+   3711
+  ],
+  "mcdonald's": [
+   4204,
+   13,
+   8
+  ],
+  "meant": [
+   1350
+  ],
+  "meeting": [
+   702
+  ],
+  "metformin": [
+   683,
+   11897,
+   609
+  ],
+  "michael": [
+   1124
+  ],
+  "milligrams": [
+   30124,
+   8
+  ],
+  "minutes": [
+   515
+  ],
+  "morning": [
+   496
+  ],
+  "motto": [
+   15816
+  ],
+  "my": [
+   67
+  ],
+  "naïve": [
+   2792,
+   0,
+   106
+  ],
+  "never": [
+   187
+  ],
+  "new": [
+   71
+  ],
+  "next": [
+   182
+  ],
+  "nice": [
+   1390
+  ],
+  "night": [
+   255
+  ],
+  "ninety": [
+   773,
+   2222
+  ],
+  "not": [
+   37
+  ],
+  "now": [
+   82
+  ],
+  "number": [
+   240
+  ],
+  "o'clock": [
+   612,
+   13,
+   16821
+  ],
+  "of": [
+   11
+  ],
+  "off": [
+   121
+  ],
+  "office": [
+   354
+  ],
+  "oh": [
+   1673
+  ],
+  "okay": [
+   4422
+  ],
+  "on": [
+   18
+  ],
+  "once": [
+   332
+  ],
+  "one": [
+   48
+  ],
+  "other": [
+   90
+  ],
+  "ought": [
+   101,
+   7920
+  ],
+  "our": [
+   79
+  ],
+  "over": [
+   78
+  ],
+  "pressure": [
+   775
+  ],
+  "project": [
+   855
+  ],
+  "put": [
+   237
+  ],
+  "record": [
+   516
+  ],
+  "remember": [
+   987
+  ],
+  "remote": [
+   3206
+  ],
+  "resting": [
+   12259
+  ],
+  "rock'n'roll": [
+   1869,
+   13,
+   160,
+   13,
+   13239
+  ],
+  "said": [
+   23
+  ],
+  "saying": [
+   417
+  ],
+  "see": [
+   149
+  ],
+  "should": [
+   135
+  ],
+  "sister": [
+   1548
+  ],
+  "sit": [
+   1700
+  ],
+  "six": [
+   288
+  ],
+  "skip": [
+   9286
+  ],
+  "sleep": [
+   1577
+  ],
+  "small": [
+   470
+  ],
+  "smells": [
+   15114
+  ],
+  "so": [
+   59
+  ],
+  "special": [
+   649
+  ],
+  "start": [
+   266
+  ],
+  "still": [
+   127
+  ],
+  "stuck": [
+   2474
+  ],
+  "summer": [
+   520
+  ],
+  "supposed": [
+   2540
+  ],
+  "sure": [
+   468
+  ],
+  "tablets": [
+   12316
+  ],
+  "take": [
+   151
+  ],
+  "taking": [
+   419
+  ],
+  "ten": [
+   1364
+  ],
+  "tests": [
+   1130
+  ],
+  "than": [
+   83
+  ],
+  "thank": [
+   1275
+  ],
+  "that": [
+   16
+  ],
+  "that's": [
+   16,
+   13,
+   8
+  ],
+  "the": [
+   5
+  ],
+  "them": [
+   96
+  ],
+  "there": [
+   49
+  ],
+  "this": [
+   30
+  ],
+  "three": [
+   123
+  ],
+  "time": [
+   73
+  ],
+  "to": [
+   7
+  ],
+  "today": [
+   230
+  ],
+  "too": [
+   179
+  ],
+  "took": [
+   261
+  ],
+  "twenty": [
+   5137
+  ],
+  "two": [
+   85
+  ],
+  "uh": [
+   14194
+  ],
+  "um": [
+   5609
+  ],
+  "up": [
+   57
+  ],
+  "used": [
+   277
+  ],
+  "user": [
+   1877
+  ],
+  "very": [
+   113
+  ],
+  "want": [
+   159
+  ],
+  "wants": [
+   976
+  ],
+  "was": [
+   20
+  ],
+  "we": [
+   25
+  ],
+  "we're": [
+   25,
+   13,
+   81
+  ],
+  "weeks": [
+   383
+  ],
+  "well": [
+   130
+  ],
+  "were": [
+   46
+  ],
+  "what": [
+   63
+  ],
+  "when": [
+   65
+  ],
+  "while": [
+   124
+  ],
+  "with": [
+   22
+  ],
+  "wonderful": [
+   2563
+  ],
+  "works": [
+   1118
+  ],
+  "x": [
+   1396
+  ],
+  "y'all": [
+   1627,
+   13,
+   4318
+  ],
+  "yes": [
+   926
+  ],
+  "you": [
+   35
+  ],
+  "your": [
+   92
+  ],
+  "yourself": [
+   1427
+  ],
+  "zero": [
+   1766
+  ],
+  "zzzzqqqq": [
+   101,
+   8096,
+   8096,
+   3300,
+   3300,
+   3300,
+   3300
+  ],
+  "über": [
+   16883
+  ],
+  "日本": [
+   101,
+   0
+  ]
+ },
+ "paragraphs": [
+  {
+   "turns": [
+    "Um well this is the kick off meeting for our our project",
+    "and um",
+    "this is just what we're gonna be doing over the next twenty five minutes",
+    "um so first of all just to kind of make sure that we all know each other I'm Laura and I'm the project manager",
+    "do you want to introduce yourself again"
+   ],
+   "closed": true,
+   "expected": "Um, well, this is the kick off meeting for our our project. And, um, this is just what we're gonna be doing over the next twenty five minutes. Um, so first of all, just to kind of make sure that we all know each other. I'm Laura and I'm the project manager. Do you want to introduce yourself again?"
+  },
+  {
+   "turns": [
+    "I'm David and I'm supposed to be an industrial designer okay"
+   ],
+   "closed": true,
+   "expected": "I'm David and I'm supposed to be an industrial designer, okay?"
+  },
+  {
+   "turns": [
+    "and I'm Andrew and I'm uh marketing",
+    "expert"
+   ],
+   "closed": true,
+   "expected": "And I'm Andrew and I'm, uh, marketing expert."
+  },
+  {
+   "turns": [
+    "I'm Greg and I'm user interface"
+   ],
+   "closed": true,
+   "expected": "I'm Greg and I'm user interface."
+  },
+  {
+   "turns": [
+    "great",
+    "okay",
+    "um so we're designing a new remote control and um oh I have to record he's here actually so that's",
+    "David Andrew and Craig"
+   ],
+   "closed": true,
+   "expected": "Great, okay, um, so we're designing a new remote control. And, um, oh, I have to record. He's here, actually, so that's David, Andrew and Craig."
+  },
+  {
+   "turns": [
+    "Um, well this is the kickoff meeting for our",
+    "project",
+    "and um, this is just what we're going to be doing over the next twenty five minutes. So first of all",
+    "just to kind of make sure that we all know each other",
+    "and Laura and I'm a project manager. Do you want to introduce yourself again?"
+   ],
+   "closed": true,
+   "expected": "Um, well, this is the kickoff meeting for our project. And, um, this is just what we're going to be doing over the next twenty five minutes. So first of all, just to kind of make sure that we all know each other and Laura and I'm a project manager. Do you want to introduce yourself again?"
+  },
+  {
+   "turns": [
+    "Hi, I'm David and I'm supposed to be an industrial designer. Okay, I'm Andrew and I'm"
+   ],
+   "closed": true,
+   "expected": "Hi, I'm David and I'm supposed to be an industrial designer. Okay, I'm Andrew and I'm."
+  },
+  {
+   "turns": [
+    "uh marketing",
+    "expert"
+   ],
+   "closed": true,
+   "expected": "UH, marketing expert."
+  },
+  {
+   "turns": [
+    "and I'm a user interface"
+   ],
+   "closed": true,
+   "expected": "And I'm a user interface."
+  },
+  {
+   "turns": [
+    "great",
+    "okay",
+    "um so we're designing a new remote control",
+    "and um oh I have to record he's here actually so",
+    "uh David Andrea and Craig"
+   ],
+   "closed": true,
+   "expected": "Great, okay, um, so we're designing a new remote control. And, um, oh, I have to record. He's here, actually. So, uh, David, Andrea and Craig."
+  },
+  {
+   "turns": [
+    "Morning, Margaret. I'm Doctor Feldman. Your blood pressure is one hundred and forty eight over ninety two today. I'd like you to start",
+    "lease in april ten milligrams",
+    "once a day."
+   ],
+   "closed": true,
+   "expected": "Morning, Margaret. I'm Doctor Feldman. Your blood pressure is one hundred and forty eight over ninety two today. I'd like you to start lease in April, ten milligrams once a day."
+  },
+  {
+   "turns": [
+    "Okay, should I still take the metformin?"
+   ],
+   "closed": true,
+   "expected": "Okay, should I still take the metformin?"
+  },
+  {
+   "turns": [
+    "Yes, keep taking the metformin. That hasn't changed. Do not take it with grapefruit juice",
+    "and don't skip a dose even if you feel fine",
+    "if you don't feel better in three days, call the office. The number is five five five zero one four two"
+   ],
+   "closed": true,
+   "expected": "Yes, keep taking the metformin. That hasn't changed. Do not take it with grapefruit juice and don't skip a dose, even if you feel fine if you don't feel better in three days, call the office. The number is five, five, five, zero, one, four, two."
+  },
+  {
+   "turns": [
+    "How was the drive up here?",
+    "It smells wonderful."
+   ],
+   "closed": true,
+   "expected": "How was the drive up here? It smells wonderful."
+  },
+  {
+   "turns": [
+    "Did Michael end up coming with you before it gets stuck?"
+   ],
+   "closed": true,
+   "expected": "Did Michael end up coming with you before it gets stuck?"
+  },
+  {
+   "turns": [
+    "Did you remember to lock the back door this time"
+   ],
+   "closed": true,
+   "expected": "Did you remember to lock the back door this time?"
+  },
+  {
+   "turns": [
+    "he works too hard? The garden looks well"
+   ],
+   "closed": true,
+   "expected": "He works too hard? The garden looks well."
+  },
+  {
+   "turns": [
+    "with you"
+   ],
+   "closed": true,
+   "expected": "With you."
+  },
+  {
+   "turns": [
+    "that the motto did well"
+   ],
+   "closed": true,
+   "expected": "That the motto did well."
+  },
+  {
+   "turns": [
+    "Was just saying to your father that we ought to go up to the lake again this summer like we used to when the children were small and everything took longer than it does now. The doctor said the tests came back fine, but he wants to see you again in six weeks just to be sure and you should keep taking the tablets in the meant"
+   ],
+   "closed": true,
+   "expected": "Was just saying to your father that we ought to go up to the lake again this summer, like we used to. When the children were small and everything took longer than it does now. The doctor said, the tests came back fine. But he wants to see you again in six weeks, just to be sure, and you should keep taking the tablets in the meant."
+  },
+  {
+   "turns": [
+    "Special today is the luncher over there. Thank you, dear."
+   ],
+   "closed": true,
+   "expected": "Special Today is the luncher over there. Thank you, dear."
+  },
+  {
+   "turns": [
+    "I'm not very hungry"
+   ],
+   "closed": true,
+   "expected": "I'm not very hungry."
+  },
+  {
+   "turns": [
+    "there in my bag. I never forget them now. I know I'll take it when we"
+   ],
+   "closed": true,
+   "expected": "There in my bag. I never forget them now. I know I'll take it when we."
+  },
+  {
+   "turns": [
+    "Good morning. It's nice to see you today. I put the kettle on so we can sit in the kitchen. Did you sleep well last night? Your sister called while you were resting"
+   ],
+   "closed": true,
+   "expected": "Good morning. It's nice to see you today. I put the kettle on so we can sit in the kitchen. Did you sleep well last night? Your sister called while you were resting."
+  },
+  {
+   "turns": [
+    "Good morning. It's nice to see you today. I put the kettle on so we can sit in the kitchen. Did you sleep well last night? Your sister called while you were resting"
+   ],
+   "closed": false,
+   "expected": "Good morning. It's nice to see you today. I put the kettle on so we can sit in the kitchen. Did you sleep well last night? Your sister called while you were resting."
+  }
+ ]
+}

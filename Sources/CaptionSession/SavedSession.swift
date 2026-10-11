@@ -138,15 +138,20 @@ public enum SessionTitle {
 }
 
 public enum TranscriptExport {
-    /// Plain text with one paragraph per turn, for sharing with a family member or a doctor.
-    public static func plainText(_ session: SavedSession, title: String? = nil) -> String {
+    /// Plain text with the paragraphs the screen shows, each under its speaker's name, for sharing
+    /// with a family member or a doctor.
+    ///
+    /// - Parameter format: Punctuation, as on screen. Paragraphs not punctuated yet are shared as
+    ///   the engine wrote them.
+    public static func plainText(_ session: SavedSession, title: String? = nil,
+                                 format: CaptionLines.Format? = nil) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .full
         formatter.timeStyle = .short
         var out = (title ?? SessionTitle.make(for: session.startedAt)) + "\n"
         out += formatter.string(from: session.startedAt) + "\n\n"
-        for turn in session.turns where !turn.text.isEmpty {
-            out += "\(session.label(for: turn.speaker)): \(turn.text)\n\n"
+        for line in CaptionLines.make(turns: session.turns, names: session.names, format: format) {
+            out += "\(line.label): \(line.text)\n\n"
         }
         out += "Captioned automatically on this phone. Words and speakers may be wrong.\n"
         return out

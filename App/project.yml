@@ -23,6 +23,12 @@ targets:
       - path: Resources
       - path: ../THIRD_PARTY_NOTICES.md
         buildPhase: resources
+      # Punctuation for the captions. Built by Scripts/make-punctuation-model.sh, which the build
+      # scripts run first; Xcode compiles the package to Punctuation.mlmodelc in the bundle.
+      - path: ../.models/punctuation/Punctuation.mlpackage
+        buildPhase: resources
+      - path: ../.models/punctuation/vocabulary.tsv
+        buildPhase: resources
     postBuildScripts:
       # Into the bundle before it is signed. Not sandboxed: it reads the repository's history.
       - name: Changelog
