@@ -63,5 +63,7 @@ struct RootView: View {
         }
         .onChange(of: model.live.isRunning) { model.updateIdleTimer() }
         .onChange(of: model.settings.keepScreenAwake) { model.updateIdleTimer() }
+        .onChange(of: model.live.phase == .preparing) { model.updateIdleTimer() }
+        .onChange(of: model.live.isWarm) { model.modelsPrepared() }
     }
 }

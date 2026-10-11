@@ -185,9 +185,35 @@ final class AppModel {
         reloadHistory()
     }
 
-    /// Keeps the screen on while captioning, if the settings ask for it.
+    /// Keeps the screen on while captioning, if the settings ask for it, and always while the
+    /// models are being prepared: a phone that locks part-way leaves the next person waiting again.
     func updateIdleTimer() {
-        UIApplication.shared.isIdleTimerDisabled = settings.keepScreenAwake && live.isRunning
+        UIApplication.shared.isIdleTimerDisabled = (settings.keepScreenAwake && live.isRunning)
+            || live.phase == .preparing
+    }
+
+    // MARK: - First use
+
+    /// Whether getting ready now means preparing the models for this phone's Neural Engine, which
+    /// takes about 20 seconds on an iPhone 15 Pro Max rather than under one. iOS throws away what it
+    /// prepared whenever the app is installed again, the system is updated, or a different model
+    /// is picked, so all three are in the key. The bundle path changes with every install, even of
+    /// the same build.
+    var firstUse: Bool { preparedFor != preparationKey }
+
+    private var preparedFor = UserDefaults.standard.string(forKey: AppModel.preparedKey)
+    private static let preparedKey = "modelsPreparedFor"
+
+    private var preparationKey: String {
+        [Bundle.main.bundleURL.path, ProcessInfo.processInfo.operatingSystemVersionString,
+         settings.engine.rawValue].joined(separator: "|")
+    }
+
+    /// Called once the engine is loaded, so the next launch knows it will be quick.
+    func modelsPrepared() {
+        guard live.isWarm, firstUse else { return }
+        preparedFor = preparationKey
+        UserDefaults.standard.set(preparedFor, forKey: Self.preparedKey)
     }
 }
 

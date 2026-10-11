@@ -154,7 +154,9 @@ struct LiveScreen: View {
 
     /// "Getting ready", or how far a download has got when there is one.
     private var preparingText: String {
-        guard let progress = live.progress, progress.step == .downloading else { return "Getting ready" }
+        guard let progress = live.progress, progress.step == .downloading else {
+            return model.firstUse ? "Preparing for first use" : "Getting ready"
+        }
         return "Downloading \(progress.percent)%"
     }
 
@@ -177,6 +179,9 @@ struct LiveScreen: View {
             if live.phase == .preparing, live.progress?.step == .downloading {
                 prompt("Downloading the speech models. Keep Captions open until this finishes.",
                        systemImage: "arrow.down.circle")
+            } else if live.phase == .preparing, model.firstUse {
+                prompt("Preparing the speech models for first use. This takes about half a minute.",
+                       systemImage: "gearshape.2")
             } else if live.isRunning {
                 prompt("Waiting for someone to speak…", systemImage: "ear")
             } else {
@@ -276,7 +281,11 @@ struct LiveScreen: View {
     private var mainButtonState: (String, String, Color, Bool) {
         switch live.phase {
         case .idle, .failed: return ("Start", "mic.fill", .green, true)
-        case .preparing: return (preparingText + "…", "hourglass", .gray, false)
+        // The full "Preparing for first use" is in the header and the middle of the screen; on the
+        // button it would wrap.
+        case .preparing:
+            let short = model.firstUse && live.progress?.step != .downloading
+            return (short ? "Preparing…" : preparingText + "…", "hourglass", .gray, false)
         case .listening: return ("Stop", "stop.fill", .red, true)
         case .finishing: return ("Saving…", "hourglass", .gray, false)
         }
