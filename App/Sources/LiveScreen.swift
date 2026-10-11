@@ -35,8 +35,11 @@ struct LiveScreen: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     VStack(spacing: 12) {
                         header
+                        // Centred in the space under the header, where a thumb finds it from
+                        // either side of the phone.
                         Spacer(minLength: 0)
                         controls
+                        Spacer(minLength: 0)
                     }
                     .frame(width: 240)
                 }
@@ -246,7 +249,8 @@ struct LiveScreen: View {
         // Tall on an empty screen, so it cannot be missed; shorter whenever there are captions,
         // so they get the room. Keyed to the captions rather than to listening, so pressing Stop
         // does not grow the button over the last thing that was said.
-        // On its side the button has a column of its own, and takes all of it.
+        // On its side the button has a column of its own; it stays a button-sized button there
+        // rather than filling the column, which made Stop the biggest thing on the screen.
         let compact = !live.lines.isEmpty && !sideways
         // Sized with the captions, but capped: past this, a bigger label only crowds the button.
         let size = min(style.captionSize * (compact ? 0.8 : 1), 44)
@@ -254,7 +258,7 @@ struct LiveScreen: View {
             Label(title, systemImage: icon)
                 .font(.system(size: size, weight: .bold, design: style.design))
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: compact ? 88 : 140, maxHeight: sideways ? .infinity : nil)
+                .frame(minHeight: compact ? 88 : (sideways ? 120 : 140))
         }
         .buttonStyle(.borderedProminent)
         .buttonBorderShape(.roundedRectangle(radius: 28))
