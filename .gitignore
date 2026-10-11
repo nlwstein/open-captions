@@ -33,3 +33,5 @@ App/Generated/
 
 # Scripts/make-ipa.sh output: the unsigned sideload IPA and its build
 .ipa/
+# Scripts/upload-testflight.sh output: the signed archive and its logs
+.testflight/
