@@ -297,6 +297,10 @@ public final class StreamingCaptioner: @unchecked Sendable {
         /// rather than arguing about.
         public var maxGainDb: Float = 32
 
+        /// The level the gain stage aims speech at, in dBFS. Forwarded to
+        /// ``AutomaticGain/targetSpeechDb``.
+        public var targetSpeechDb: Float = -25
+
         public init() {}
     }
 
@@ -427,6 +431,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
         var meter = AudioLevelMeter()
         var gain = AutomaticGain()
         gain.maxGainDb = options.maxGainDb
+        gain.targetSpeechDb = options.targetSpeechDb
         var recentUpdates: [Double] = []
         var busy = 0.0
         let started = Date()

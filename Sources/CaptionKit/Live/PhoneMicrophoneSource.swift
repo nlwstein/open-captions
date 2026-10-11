@@ -1,19 +1,5 @@
 import Foundation
 
-/// Which of the phone's capture chains the samples come through.
-public enum MicrophoneProcessing: String, CaseIterable, Codable, Sendable {
-    /// `.measurement`: no automatic gain, no noise suppression. The closest thing on a phone to
-    /// what the MacBook's microphone delivered when the engine was judged to work well, and
-    /// `AutomaticGain` already does the one thing the system's chain would have done for us.
-    case none
-    /// `.default`: whatever the system applies to a recording app.
-    case standard
-    /// `.voiceChat`: echo cancellation and voice isolation, as on a phone call. Built for one
-    /// talker close to the phone, so it may suppress the other people at the table — which is
-    /// the case this app exists for. Offered so that can be measured rather than assumed.
-    case voiceIsolation
-}
-
 #if os(iOS)
 import AVFoundation
 
@@ -22,7 +8,38 @@ extension MicrophoneProcessing {
         switch self {
         case .none: return .measurement
         case .standard: return .default
+        case .videoRecording: return .videoRecording
         case .voiceIsolation: return .voiceChat
+        case .videoChat: return .videoChat
+        }
+    }
+
+    /// Voice processing only runs in a session that can also play, so the two chat modes need
+    /// `.playAndRecord`. In `.record` iOS quietly ignores them.
+    var category: AVAudioSession.Category {
+        usesVoiceProcessing ? .playAndRecord : .record
+    }
+}
+
+extension MicrophoneSetup.Pattern {
+    var polarPattern: AVAudioSession.PolarPattern? {
+        switch self {
+        case .automatic: return nil
+        case .omnidirectional: return .omnidirectional
+        case .cardioid: return .cardioid
+        case .subcardioid: return .subcardioid
+        case .stereo: return .stereo
+        }
+    }
+}
+
+extension MicrophoneSetup.Microphone {
+    var orientation: AVAudioSession.Orientation? {
+        switch self {
+        case .automatic: return nil
+        case .bottom: return .bottom
+        case .front: return .front
+        case .back: return .back
         }
     }
 }
@@ -39,20 +56,22 @@ extension MicrophoneProcessing {
 /// for now, which is the documented contract for a streaming conversion.
 public final class PhoneMicrophoneSource: LiveAudioSource, @unchecked Sendable {
 
-    public typealias Processing = MicrophoneProcessing
+    public let setup: MicrophoneSetup
 
-    private let processing: Processing
     private let engine = AVAudioEngine()
     private let lock = NSLock()
     private var continuation: AsyncThrowingStream<[Float], Error>.Continuation?
     private var converter: AVAudioConverter?
     private var observers: [NSObjectProtocol] = []
+    /// What iOS agreed to, as opposed to what was asked for. Filled in once capture starts.
+    private var applied: [String] = []
 
-    private static let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000,
-                                              channels: 1, interleaved: false)!
+    public init(setup: MicrophoneSetup = MicrophoneSetup()) {
+        self.setup = setup
+    }
 
-    public init(processing: Processing = .none) {
-        self.processing = processing
+    public convenience init(processing: MicrophoneProcessing) {
+        self.init(setup: MicrophoneSetup(processing: processing))
     }
 
     public func stream() async throws -> AsyncThrowingStream<[Float], Error> {
@@ -60,8 +79,9 @@ public final class PhoneMicrophoneSource: LiveAudioSource, @unchecked Sendable {
             throw LiveAudioError.microphonePermissionDenied
         }
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: processing.mode, options: [])
+        try session.setCategory(setup.processing.category, mode: setup.processing.mode, options: [])
         try session.setActive(true)
+        let notes = configureInput(session)
 
         let (stream, continuation) = AsyncThrowingStream<[Float], Error>.makeStream(
             bufferingPolicy: .unbounded)
@@ -70,6 +90,7 @@ public final class PhoneMicrophoneSource: LiveAudioSource, @unchecked Sendable {
 
         try startEngine()
         observe()
+        lock.withLock { applied = Self.describe(session) + notes }
         return stream
     }
 
@@ -81,12 +102,85 @@ public final class PhoneMicrophoneSource: LiveAudioSource, @unchecked Sendable {
 
     public func origin() -> AudioOrigin {
         let route = AVAudioSession.sharedInstance().currentRoute
+        let details = lock.withLock { applied }
         guard let input = route.inputs.first else {
-            return AudioOrigin(kind: .microphone, name: "no microphone")
+            // Before capture starts there is no route yet; say what was asked for instead.
+            return AudioOrigin(kind: .microphone, name: "phone microphone", details: [setup.label])
         }
-        var details = [processing.rawValue]
-        if let source = input.selectedDataSource?.dataSourceName { details.append(source) }
-        return AudioOrigin(kind: .microphone, name: input.portName, details: details)
+        return AudioOrigin(kind: .microphone, name: input.portName,
+                           details: details.isEmpty ? [setup.label] : details)
+    }
+
+    // MARK: - Choosing the microphone
+
+    /// Picks the built-in microphone, its data source and its pattern, as far as this phone allows.
+    /// Returns a note for anything asked for that the phone would not do.
+    private func configureInput(_ session: AVAudioSession) -> [String] {
+        var notes: [String] = []
+        let wantsMicrophone = setup.microphone != .automatic || setup.pattern != .automatic
+        if wantsMicrophone,
+           let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+            do { try session.setPreferredInput(builtIn) } catch { notes.append("input not chosen: \(error.localizedDescription)") }
+            let sources = builtIn.dataSources ?? []
+            var source = builtIn.selectedDataSource ?? builtIn.preferredDataSource ?? sources.first
+            if let orientation = setup.microphone.orientation {
+                if let match = sources.first(where: { $0.orientation == orientation }) {
+                    source = match
+                } else {
+                    notes.append("no \(setup.microphone.rawValue) microphone")
+                }
+            }
+            if let source {
+                if let pattern = setup.pattern.polarPattern {
+                    if source.supportedPolarPatterns?.contains(pattern) == true {
+                        do { try source.setPreferredPolarPattern(pattern) } catch {
+                            notes.append("pattern not set: \(error.localizedDescription)")
+                        }
+                    } else {
+                        notes.append("\(setup.pattern.rawValue) not offered by \(source.dataSourceName)")
+                    }
+                }
+                do { try builtIn.setPreferredDataSource(source) } catch {
+                    notes.append("microphone not chosen: \(error.localizedDescription)")
+                }
+            }
+            if setup.pattern == .stereo {
+                try? session.setPreferredInputOrientation(.portrait)
+                try? session.setPreferredInputNumberOfChannels(2)
+            }
+        }
+        if let gain = setup.hardwareGain {
+            if session.isInputGainSettable {
+                do { try session.setInputGain(Float(min(max(gain, 0), 1))) } catch {
+                    notes.append("input gain not set: \(error.localizedDescription)")
+                }
+            } else {
+                notes.append("input gain is fixed on this route")
+            }
+        }
+        return notes
+    }
+
+    /// The session as it actually ended up, for diagnostics: a request iOS declined is otherwise
+    /// indistinguishable from one that made no difference.
+    private static func describe(_ session: AVAudioSession) -> [String] {
+        var details = ["mode \(session.mode.rawValue.replacingOccurrences(of: "AVAudioSessionMode", with: ""))"]
+        if let input = session.currentRoute.inputs.first {
+            if let source = input.selectedDataSource {
+                details.append("mic \(source.dataSourceName)")
+                if let pattern = source.selectedPolarPattern {
+                    details.append("pattern \(pattern.rawValue.replacingOccurrences(of: "AVAudioSessionPolarPattern", with: ""))")
+                }
+            }
+        }
+        details.append("\(session.inputNumberOfChannels) ch")
+        details.append(String(format: "%.0f Hz", session.sampleRate))
+        details.append(session.isInputGainSettable
+                       ? String(format: "input gain %.2f", session.inputGain) : "input gain fixed")
+        if session.mode == .voiceChat || session.mode == .videoChat {
+            details.append("mic mode \(AVCaptureDevice.activeMicrophoneMode.name)")
+        }
+        return details
     }
 
     // MARK: - Engine
@@ -94,7 +188,12 @@ public final class PhoneMicrophoneSource: LiveAudioSource, @unchecked Sendable {
     private func startEngine() throws {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, let converter = AVAudioConverter(from: format, to: Self.target)
+        // Converted at the input's own channel count and mixed to mono afterwards: a converter
+        // asked to go from two channels to one keeps the first and drops the second.
+        guard format.sampleRate > 0,
+              let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000,
+                                         channels: format.channelCount, interleaved: false),
+              let converter = AVAudioConverter(from: format, to: target)
         else {
             throw LiveAudioError.unreadableAudio("microphone (\(format))")
         }
@@ -113,9 +212,10 @@ public final class PhoneMicrophoneSource: LiveAudioSource, @unchecked Sendable {
 
     private func deliver(_ buffer: AVAudioPCMBuffer) {
         guard let converter = lock.withLock({ self.converter }) else { return }
-        let ratio = Self.target.sampleRate / buffer.format.sampleRate
+        let target = converter.outputFormat
+        let ratio = target.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 64
-        guard let out = AVAudioPCMBuffer(pcmFormat: Self.target, frameCapacity: capacity) else {
+        guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else {
             return
         }
         var supplied = false
@@ -129,8 +229,18 @@ public final class PhoneMicrophoneSource: LiveAudioSource, @unchecked Sendable {
             status.pointee = .haveData
             return buffer
         }
-        guard out.frameLength > 0, let channel = out.floatChannelData?[0] else { return }
-        let samples = Array(UnsafeBufferPointer(start: channel, count: Int(out.frameLength)))
+        let count = Int(out.frameLength)
+        let channels = Int(target.channelCount)
+        guard count > 0, let data = out.floatChannelData else { return }
+        var samples = Array(UnsafeBufferPointer(start: data[0], count: count))
+        if channels > 1 {
+            for channel in 1..<channels {
+                let other = data[channel]
+                for i in 0..<count { samples[i] += other[i] }
+            }
+            let scale = 1 / Float(channels)
+            for i in 0..<count { samples[i] *= scale }
+        }
         lock.withLock { self.continuation }?.yield(samples)
     }
 
@@ -174,6 +284,17 @@ public final class PhoneMicrophoneSource: LiveAudioSource, @unchecked Sendable {
         engine.stop()
         if wasRunning {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
+    }
+}
+
+extension AVCaptureDevice.MicrophoneMode {
+    public var name: String {
+        switch self {
+        case .standard: return "standard"
+        case .voiceIsolation: return "voice isolation"
+        case .wideSpectrum: return "wide spectrum"
+        @unknown default: return "unknown"
         }
     }
 }

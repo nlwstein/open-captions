@@ -49,6 +49,9 @@ public final class LiveConversation {
     public private(set) var progress: ModelProgress?
     /// Whether an engine is loaded and waiting, so Start is instant.
     public private(set) var isWarm = false
+    /// The microphone as iOS set it up for this session, once capture has started. Asked for
+    /// after the first audio rather than at Start, when the session has no route yet.
+    public private(set) var input: AudioOrigin?
 
     public var isRunning: Bool { phase == .listening || phase == .finishing }
 
@@ -76,6 +79,7 @@ public final class LiveConversation {
     private var diagnostics: DiagnosticsLog?
     private var lastSave = Date.distantPast
     private var lastStatusLog = Date.distantPast
+    private var inputLogged = false
 
     /// How often a running transcript is written to disk.
     public var autosaveInterval: TimeInterval = 10
@@ -181,6 +185,8 @@ public final class LiveConversation {
         status = CaptionerStatus()
         phase = .listening
         lastSave = .distantPast
+        input = nil
+        inputLogged = false
 
         let diagnostics = DiagnosticsLog(directory: diagnosticsDirectory, sessionID: session.id)
         self.diagnostics = diagnostics
@@ -227,6 +233,12 @@ public final class LiveConversation {
     }
 
     private func handle(_ update: CaptionerUpdate) {
+        if !inputLogged, let source, update.status.audioSeconds > 0 {
+            let origin = source.origin()
+            input = origin
+            inputLogged = true
+            diagnostics?.event("microphone", ["name": origin.name, "details": origin.details])
+        }
         turns = update.turns
         status = update.status
         guard var session else { return }
@@ -260,6 +272,31 @@ public final class LiveConversation {
         Task { await self.warmUp(quietly: true) }
     }
 
+    // MARK: - Recordings
+
+    /// Captions a recording with the engine the settings call for, and returns its turns. Used by
+    /// the microphone test, which compares setups by what the recogniser makes of each.
+    ///
+    /// Uses up the warm engine the way a session does, so nothing else is held in memory beside
+    /// it; the next is loaded afterwards.
+    public func transcribe(file: URL, speed: Double = 8) async throws -> [StreamedTurn] {
+        guard !isRunning else { throw CancellationError() }
+        await warmUp(quietly: true)
+        guard let engine = warm?.engine else {
+            throw LiveAudioError.unreadableAudio("no speech model loaded")
+        }
+        warm = nil
+        isWarm = false
+        defer { Task { await self.warmUp(quietly: true) } }
+        let latest = TurnBox()
+        try await Task.detached {
+            try await engine.run(source: FileAudioSource(url: file, speed: speed)) { update in
+                latest.set(update.turns)
+            }
+        }.value
+        return latest.get()
+    }
+
     private func save() {
         guard let session, !session.turns.isEmpty else { return }
         do {
@@ -269,4 +306,11 @@ public final class LiveConversation {
             diagnostics?.event("saveFailed", ["error": String(describing: error)])
         }
     }
+}
+
+private final class TurnBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var turns: [StreamedTurn] = []
+    func set(_ value: [StreamedTurn]) { lock.withLock { turns = value } }
+    func get() -> [StreamedTurn] { lock.withLock { turns } }
 }

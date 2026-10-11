@@ -11,7 +11,7 @@ import Foundation
 ///     -max-seconds <n>      stop the session after this much audio
 ///     -autostart            start a session as soon as the app is ready
 ///     -reset                forget settings and delete every transcript first
-///     -screen <name>        open on live | history | settings | latest (newest transcript) | changelog | dedication
+///     -screen <name>        open on live | history | settings | latest (newest transcript) | changelog | dedication | mictest
 ///     -simple <0|1>  -text-size <pt>  -theme <name>  -engine <name>   override a setting
 ///     -orientation <portrait|landscape|landscape-left>   rotate the window (landscape: home side right)
 ///     -setup <0|1>          show the first-run screens, or skip them. Default: show them until
@@ -19,7 +19,7 @@ import Foundation
 ///     -fake-download <s>    with -replay: act out a first-run download taking this long
 ///     -fake-download-fail   ...and drop the connection partway through
 public struct LaunchOptions: Equatable, Sendable {
-    public enum Screen: String, Sendable { case live, history, settings, latest, changelog, dedication }
+    public enum Screen: String, Sendable { case live, history, settings, latest, changelog, dedication, mictest }
 
     public var replay: URL?
     public var audioFile: URL?

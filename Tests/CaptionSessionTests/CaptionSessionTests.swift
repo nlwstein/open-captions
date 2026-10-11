@@ -306,6 +306,25 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(settings.engine, .nemotron)
     }
 
+    func testMicrophoneSettingsRoundTripAndDefault() throws {
+        let old = try JSONDecoder().decode(AppSettings.self,
+                                           from: Data(#"{"microphone": "voiceIsolation"}"#.utf8))
+        XCTAssertEqual(old.microphoneSetup, MicrophoneSetup(processing: .voiceIsolation))
+        XCTAssertEqual(old.gain, GainTuning())
+        XCTAssertFalse(old.showMicrophoneMeter)
+
+        var settings = AppSettings()
+        settings.microphoneSetup = MicrophoneSetup(processing: .videoRecording, microphone: .back,
+                                                   pattern: .cardioid, hardwareGain: 0.8)
+        settings.gain = GainTuning(automatic: true, maxGainDb: 44, targetSpeechDb: -20)
+        let decoded = try JSONDecoder().decode(AppSettings.self,
+                                               from: JSONEncoder().encode(settings))
+        XCTAssertEqual(decoded.microphoneSetup, settings.microphoneSetup)
+        XCTAssertEqual(decoded.gain, settings.gain)
+        XCTAssertEqual(settings.microphoneSetup.slug, "videoRecording-back-cardioid-gain80")
+        XCTAssertNotEqual(GainTuning().key, settings.gain.key)
+    }
+
     func testLaunchArguments() {
         let options = LaunchOptions(arguments: [
             "/app", "-replay", "/tmp/a.json", "-speed", "4", "-autostart", "-screen", "history",

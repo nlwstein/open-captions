@@ -37,6 +37,7 @@ final class AppModel {
         /// Reached from settings in use; routes too so a launch argument can open them.
         case changelog
         case dedication
+        case micTest
     }
 
     var settings: AppSettings {
@@ -81,15 +82,16 @@ final class AppModel {
                          })
         }
         let engine = settings.engine
-        let microphone = settings.microphone
-        return .init(engineKey: engine.rawValue, engineName: engine.displayName,
-                     makeEngine: { engine.makeEngine() },
+        let microphone = settings.microphoneSetup
+        let gain = settings.gain
+        return .init(engineKey: "\(engine.rawValue)|\(gain.key)", engineName: engine.displayName,
+                     makeEngine: { engine.makeEngine(gain: gain) },
                      makeSource: {
                          if let file = launch.audioFile {
                              return FileAudioSource(url: file, speed: launch.speed,
                                                     limitSeconds: launch.maxSeconds)
                          }
-                         return PhoneMicrophoneSource(processing: microphone)
+                         return PhoneMicrophoneSource(setup: microphone)
                      })
     }
 
@@ -115,6 +117,7 @@ final class AppModel {
         case .settings: showingSettings = true
         case .changelog: path = [.changelog]
         case .dedication: path = [.dedication]
+        case .mictest: path = [.micTest]
         case .live, nil: break
         }
         if launch.autostart {

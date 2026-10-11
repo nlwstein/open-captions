@@ -220,8 +220,40 @@ struct LiveScreen: View {
 
     // MARK: - Captions
 
-    @ViewBuilder
     private var captions: some View {
+        captionContent
+            .overlay(alignment: .top) {
+                if model.settings.showMicrophoneMeter, live.isRunning {
+                    microphoneMeter
+                }
+            }
+    }
+
+    /// For testing microphone setups: the level as captured, the boost on top of it, and how
+    /// the microphone ended up being opened.
+    private var microphoneMeter: some View {
+        let status = live.status
+        return VStack(alignment: .leading, spacing: 6) {
+            MeterBar(level: Double(status.level), target: model.settings.targetSpeechDb)
+            Text(String(format: "in %.0f dB · boost +%.0f dB", status.level, status.gainDb))
+                .font(.caption.monospacedDigit().weight(.semibold))
+            Text(model.settings.microphoneSetup.label)
+                .font(.caption2)
+            if let input = live.input {
+                Text(([input.name] + input.details).joined(separator: " · "))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 12)
+        .allowsHitTesting(false)
+        .accessibilityIdentifier("microphoneMeter")
+    }
+
+    @ViewBuilder
+    private var captionContent: some View {
         let lines = live.lines
         if case .failed(let message) = live.phase, lines.isEmpty {
             prompt(message, systemImage: "exclamationmark.triangle")

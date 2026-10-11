@@ -51,6 +51,8 @@ struct RootView: View {
                         ChangelogView(changelog: About.changelog)
                     case .dedication:
                         DedicationView(text: About.dedication ?? "Nothing written yet.")
+                    case .micTest:
+                        MicTestView()
                     }
                 }
         }

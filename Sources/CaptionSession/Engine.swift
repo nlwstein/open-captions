@@ -38,10 +38,37 @@ public enum EngineChoice: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    public func makeEngine() -> CaptionEngine {
+    public func makeEngine(gain: GainTuning = GainTuning()) -> CaptionEngine {
         var options = StreamingCaptioner.Options()
         options.asrVariant = variant
+        options.automaticGain = gain.automatic
+        options.maxGainDb = Float(gain.maxGainDb)
+        options.targetSpeechDb = Float(gain.targetSpeechDb)
         return StreamingCaptioner(options: options)
+    }
+}
+
+/// The app's own gain stage, which runs after the phone's and before the recogniser.
+public struct GainTuning: Codable, Equatable, Hashable, Sendable {
+    public var automatic: Bool
+    /// The most the stage will add, in dB.
+    public var maxGainDb: Double
+    /// The level it aims speech at, in dBFS.
+    public var targetSpeechDb: Double
+
+    public init(automatic: Bool = true, maxGainDb: Double = 32, targetSpeechDb: Double = -25) {
+        self.automatic = automatic
+        self.maxGainDb = maxGainDb
+        self.targetSpeechDb = targetSpeechDb
+    }
+
+    /// Part of the warm engine's key, so a change loads a new engine.
+    public var key: String {
+        automatic ? "agc\(Int(maxGainDb))/\(Int(targetSpeechDb))" : "agc-off"
+    }
+
+    public var label: String {
+        automatic ? "gain up to \(Int(maxGainDb)) dB → \(Int(targetSpeechDb)) dBFS" : "no added gain"
     }
 }
 
