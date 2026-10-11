@@ -62,6 +62,18 @@ struct CaptionStyle {
         captionSize * settings.lineSpacing
     }
 
+    /// Space after a paragraph: half a line more than between its lines, so a new paragraph reads
+    /// as one even without the break in the speaker bar, as in the simple view.
+    var paragraphSpacing: CGFloat {
+        lineSpacing + captionSize * 0.5
+    }
+
+    /// Further space above a new speaker's name, so a change of speaker stands out from one
+    /// person's next paragraph.
+    var speakerSpacing: CGFloat {
+        captionSize * 0.4
+    }
+
     var design: Font.Design {
         switch settings.typeface {
         case .standard: return .default

@@ -73,7 +73,7 @@ final class CaptionLinesTests: XCTestCase {
         ], names: [1: "Ann"], openLast: true)
         // One speaker's turns are one paragraph, until a long pause.
         XCTAssertEqual(lines.map(\.text), ["a b", "c", "d", "e"])
-        XCTAssertEqual(lines.map(\.id), [0, 2, 4, 5])
+        XCTAssertEqual(lines.map(\.firstTurn), [0, 2, 4, 5])
         XCTAssertEqual(lines.map(\.startsNewSpeaker), [true, true, true, false])
         XCTAssertEqual(lines.map(\.speakerNumber), [1, 2, 1, 1])
         XCTAssertEqual(lines.map(\.label), ["Speaker 1", "Ann", "Speaker 1", "Speaker 1"])
@@ -81,13 +81,110 @@ final class CaptionLinesTests: XCTestCase {
         XCTAssertTrue(lines[1].contested)
     }
 
-    func testLongRunsAreSplitIntoParagraphs() {
+    func testLongRunsAreSplitIntoParagraphsEvenWithoutPunctuation() {
         let sentence = Array(repeating: "word", count: 30).joined(separator: " ")
-        let turns = (0..<10).map { SavedTurn(speaker: 0, text: sentence, start: Double($0), end: Double($0) + 0.9) }
+        let turns = (0..<20).map { SavedTurn(speaker: 0, text: sentence, start: Double($0), end: Double($0) + 0.9) }
         let lines = CaptionLines.make(turns: turns)
         XCTAssertGreaterThan(lines.count, 2)
-        XCTAssertTrue(lines.allSatisfy { $0.text.split(separator: " ").count <= CaptionLines.paragraphWords + 30 })
+        XCTAssertTrue(lines.allSatisfy { $0.text.split(separator: " ").count < ParagraphBreaks.hardWords + 30 })
         XCTAssertEqual(lines.dropFirst().map(\.startsNewSpeaker), Array(repeating: false, count: lines.count - 1))
+    }
+
+    /// One speaker, ten words a turn, half a second apart unless said; "stop" ends a sentence.
+    private func monologue(_ texts: [(String, pause: Double)]) -> [SavedTurn] {
+        var turns: [SavedTurn] = []
+        var time = 0.0
+        for (text, pause) in texts {
+            time += pause
+            let words = text.split(separator: " ").count
+            let filled = text + String(repeating: " w", count: max(0, 10 - words))
+            turns.append(SavedTurn(speaker: 0, text: filled, start: time, end: time + 3))
+            time += 3
+        }
+        return turns
+    }
+
+    /// A stand-in for the punctuation model: a full stop after "stop", and after the last word of
+    /// a finished paragraph.
+    private func punctuate(_ turns: [String], _ closed: Bool) -> String? {
+        let text = turns.joined(separator: " ").replacingOccurrences(of: "stop", with: "stop.")
+        return closed && !text.hasSuffix(".") ? text + "." : text
+    }
+
+    func testOneSpeakerIsBrokenAtSentenceEnds() {
+        let turns = monologue([
+            // 0–6: seventy words, a sentence ending at 40 (too short) and at 70 (long enough).
+            ("w", 0.5), ("w", 0.5), ("w", 0.5), ("w w w w w w w w w stop", 0.5), ("w", 0.5),
+            ("w", 0.5), ("w w w w w w w w w stop", 0.5),
+            // 7–8: twenty words, then a pause.
+            ("w", 0.5), ("w w w w w w w w w stop", 0.5),
+            // 9–11: thirty words, then "So".
+            ("w", 2), ("w", 0.5), ("w w w w w w w w w stop", 0.5), ("so w", 0.5),
+            // A pause, but no sentence end before it: no break.
+            ("w", 2), ("w", 0.5),
+        ])
+        let lines = CaptionLines.make(turns: turns, format: punctuate)
+        XCTAssertEqual(lines.map(\.firstTurn), [0, 7, 9, 12])
+        XCTAssertTrue(lines.dropLast().allSatisfy { $0.text.hasSuffix("stop.") })
+        XCTAssertEqual(lines.map(\.startsNewSpeaker), [true, false, false, false])
+
+        // No break is guessed before the punctuation that would justify it is ready.
+        XCTAssertEqual(CaptionLines.make(turns: turns, format: { _, _ in nil }).map(\.firstTurn), [0])
+        // And none after it either, until it is: deciding it later must not move them.
+        let first = turns[0...6].map(\.text)
+        XCTAssertEqual(CaptionLines.make(turns: turns, format: {
+            $0.starts(with: first) && $0.count == 8 ? nil : self.punctuate($0, $1)
+        }).map(\.firstTurn), [0])
+    }
+
+    func testASentenceEndIsJudgedByTheWordsAfterIt() {
+        // As the model does with nothing after them: a full stop at the end of every request.
+        let eager: CaptionLines.Format = { turns, _ in turns.joined(separator: " ") + "." }
+        var texts = Array(repeating: ("w", pause: 0.5), count: 7)
+        texts.append(("and then w", pause: 0.5))
+        let turns = monologue(texts)
+        // Read with the next turn's first words, the full stop falls after them, not at the break.
+        XCTAssertEqual(CaptionLines.make(turns: turns, format: eager).map(\.firstTurn), [0])
+
+        // While the next turn has fewer whole words than that, no break is decided yet.
+        var asked: [[String]] = []
+        var open = turns
+        open[7].text = "and then w"
+        _ = CaptionLines.make(turns: open, openLast: true, format: { turns, closed in
+            asked.append(turns)
+            return eager(turns, closed)
+        })
+        // The open paragraph is shown read with "and then" — not the "w", which may still grow.
+        XCTAssertTrue(asked.contains { $0.last == "and then" })
+        XCTAssertFalse(asked.contains { $0.last == "and then w" })
+        XCTAssertEqual(CaptionLines.make(turns: open, openLast: true, format: eager).map(\.firstTurn), [0])
+    }
+
+    func testABreakOnceShownNeverMoves() {
+        var texts: [(String, pause: Double)] = []
+        for index in 0..<60 {
+            let text = index % 3 == 2 ? "w w w w w w w w w stop" : index % 7 == 0 ? "so w" : "w"
+            texts.append((text, index % 5 == 0 ? 2 : 0.5))
+        }
+        let turns = monologue(texts)
+        var shown: Set<Int> = []
+        for count in 1...turns.count {
+            let lines = CaptionLines.make(turns: Array(turns.prefix(count)), openLast: true,
+                                          format: punctuate)
+            let ids = Set(lines.map(\.id))
+            XCTAssertTrue(shown.isSubset(of: ids), "a break moved after \(count) turns")
+            shown = ids
+        }
+        XCTAssertGreaterThan(shown.count, 5)
+    }
+
+    func testMarkersAreWholeWords() {
+        XCTAssertTrue(ParagraphBreaks.startsWithMarker("So, what did he say"))
+        XCTAssertTrue(ParagraphBreaks.startsWithMarker("by the way it rained"))
+        XCTAssertFalse(ParagraphBreaks.startsWithMarker("some people"))
+        XCTAssertFalse(ParagraphBreaks.startsWithMarker("okay so"))
+        XCTAssertTrue(ParagraphBreaks.endsSentence("he said \"no.\""))
+        XCTAssertFalse(ParagraphBreaks.endsSentence("e.g like"))
     }
 
     func testFinishedTurnsArePunctuatedAndTheNewestShownAsIs() {
@@ -103,9 +200,17 @@ final class CaptionLinesTests: XCTestCase {
             SavedTurn(speaker: 1, text: "that we should", start: 3.5, end: 4),
         ]
         let lines = CaptionLines.make(turns: turns, openLast: true, format: format)
-        XCTAssertEqual(lines.map(\.text), ["Hello There.", "How Are You I Was Saying. That we should"])
-        XCTAssertEqual(asked.map(\.0), [["hello there"], ["how are you", "i was saying"]])
+        // The finished turns are read with the newest turn's whole words after them, so the full
+        // stop the stand-in puts at the end falls there, and is not shown.
+        XCTAssertEqual(lines.map(\.text), ["Hello There.", "How Are You I Was Saying that we should"])
+        XCTAssertEqual(asked.map(\.0), [["hello there"], ["how are you", "i was saying", "that we"]])
         XCTAssertEqual(asked.map(\.1), [true, false])
+
+        // With a sentence end before the newest turn, its first word starts the next sentence.
+        let ended = CaptionLines.make(turns: turns, openLast: true, format: { turns, _ in
+            turns.joined(separator: " ").replacingOccurrences(of: "saying", with: "saying.")
+        })
+        XCTAssertEqual(ended.last?.text, "how are you i was saying. That we should")
 
         // Not ready yet: the engine's text.
         XCTAssertEqual(CaptionLines.make(turns: turns, openLast: true, format: { _, _ in nil }).map(\.text),

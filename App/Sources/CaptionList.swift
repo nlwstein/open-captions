@@ -147,7 +147,9 @@ struct CaptionList: UIViewRepresentable {
             }
             snapshot.reconfigureItems(changed.filter { order.contains($0) && newOrder.contains($0) })
             dataSource.apply(snapshot, animatingDifferences: false, commitAlongsideUpdates: commit) { [weak self] in
-                guard let self, let parent, parent.live, following else { return }
+                // After Stop too: punctuation still arriving for the last words changes their
+                // height, which left the end of the last paragraph below the buttons.
+                guard let self, let parent, parent.live || parent.anchoredToEnd, following else { return }
                 scrollToEnd(animated: false)
             }
         }

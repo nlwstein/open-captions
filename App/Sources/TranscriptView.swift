@@ -1,7 +1,7 @@
 import CaptionSession
 import SwiftUI
 
-/// Captions, one paragraph per turn, with the speaker named whenever it changes.
+/// Captions in paragraphs, with the speaker named whenever it changes.
 ///
 /// Live, it keeps the newest words in view until the reader scrolls back; then it stays put, and a
 /// large "Back to now" button brings it back. Text that is being read never moves on its own.
@@ -58,7 +58,7 @@ struct TranscriptView: View {
     }
 }
 
-/// One turn: the speaker's name when it changes, a bar in their colour, and what they said.
+/// One paragraph: the speaker's name when it changes, a bar in their colour, and what they said.
 struct CaptionParagraph: View {
     let line: CaptionLine
     /// The first paragraph shown, which needs no space above its name.
@@ -71,7 +71,7 @@ struct CaptionParagraph: View {
         VStack(alignment: .leading, spacing: 6) {
             if showSpeakers, line.startsNewSpeaker {
                 speakerHeader
-                    .padding(.top, first ? 0 : 18)
+                    .padding(.top, first ? 0 : style.speakerSpacing)
             }
             HStack(alignment: .top, spacing: 12) {
                 if showSpeakers {
@@ -89,7 +89,7 @@ struct CaptionParagraph: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
-            .padding(.bottom, 10)
+            .padding(.bottom, style.paragraphSpacing)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(showSpeakers ? "\(line.label): \(line.text)" : line.text)
