@@ -14,7 +14,7 @@
 #
 # Signing is Xcode's cloud-managed signing: no certificates or profiles are stored anywhere, here
 # or in CI. The app record (bundle ID io.nlws.livecaption) must already exist in App Store Connect.
-# Run by .github/workflows/release.yml; works the same on a Mac with the key on disk.
+# Run by .github/workflows/testflight.yml; works the same on a Mac with the key on disk.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -37,7 +37,7 @@ mkdir -p "$OUT"
 Scripts/make-punctuation-model.sh
 (cd App && xcodegen generate --quiet)
 
-echo "Archiving OpenCaptions $VERSION ($BUILD) for team $APPLE_TEAM_ID…"
+echo "Archiving OpenCaptions $VERSION ($BUILD) for team ${APPLE_TEAM_ID}…"
 status=0
 xcodebuild -project App/OpenCaptions.xcodeproj -scheme OpenCaptions \
   -configuration Release -destination 'generic/platform=iOS' \
