@@ -1,0 +1,101 @@
+name: TestFlight
+
+# Every push to main that changes the app is signed and uploaded to App Store Connect, so it shows
+# up in TestFlight for internal testers (no App Review). Nothing reaches the App Store from here:
+# submitting a build for review stays a manual step in App Store Connect.
+#
+# The version is what a release cut from this commit would be (Scripts/release.py, bump=auto) and
+# the build number is the commit count, so a later Release of the same commit names the same build.
+# Skipped, with a note, until the App Store Connect key is in the repository's secrets; see
+# Scripts/upload-testflight.sh for what each one is.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "App/**"
+      - "Sources/**"
+      - "Package.swift"
+      - "Package.resolved"
+      - "Scripts/make-punctuation-model.sh"
+      - "Scripts/punctuation_model.py"
+      - "Scripts/upload-testflight.sh"
+      - ".github/workflows/testflight.yml"
+  workflow_dispatch:
+
+# A newer push supersedes a queued or running upload of an older one.
+concurrency:
+  group: testflight
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Must match ci.yml, so this reuses the punctuation model CI already built.
+  PUNCTUATION_CACHE_VERSION: v1
+
+jobs:
+  testflight:
+    name: TestFlight
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+    steps:
+      - id: ready
+        run: |
+          if [ -n "$ASC_KEY_ID" ] && [ -n "$ASC_ISSUER_ID" ] && [ -n "$APPLE_TEAM_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::TestFlight upload skipped: set the ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_P8 secrets and the APPLE_TEAM_ID variable."
+          fi
+      - if: steps.ready.outputs.ready == 'true'
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - if: steps.ready.outputs.ready == 'true'
+        id: v
+        run: |
+          echo "version=$(python3 -I Scripts/release.py next-version --bump auto)" >> "$GITHUB_OUTPUT"
+          echo "build=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+      - if: steps.ready.outputs.ready == 'true'
+        name: Select Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - if: steps.ready.outputs.ready == 'true'
+        id: model
+        uses: actions/cache/restore@v6
+        with:
+          path: .models/punctuation
+          key: punctuation-${{ env.PUNCTUATION_CACHE_VERSION }}-${{ runner.os }}-${{ hashFiles('Scripts/make-punctuation-model.sh', 'Scripts/punctuation_model.py') }}
+      - if: steps.ready.outputs.ready == 'true' && steps.model.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: false
+      - if: steps.ready.outputs.ready == 'true'
+        name: Install xcodegen
+        run: command -v xcodegen || brew install xcodegen
+      - if: steps.ready.outputs.ready == 'true'
+        name: Archive and upload
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          export ASC_KEY_PATH="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$ASC_KEY_PATH"
+          chmod 600 "$ASC_KEY_PATH"
+          Scripts/upload-testflight.sh "${{ steps.v.outputs.version }}" "${{ steps.v.outputs.build }}"
+          echo "Uploaded ${{ steps.v.outputs.version }} (${{ steps.v.outputs.build }}) from $(git rev-parse --short HEAD) to TestFlight" >> "$GITHUB_STEP_SUMMARY"
+      - if: always() && steps.ready.outputs.ready == 'true'
+        name: Remove the key
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8
+      - if: failure() && steps.ready.outputs.ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: testflight-logs
+          path: .testflight/*.log
+          include-hidden-files: true

@@ -123,29 +123,34 @@ The microphone is used only for live captioning. No audio or text leaves the dev
 
 ## Uploading builds to TestFlight
 
-Every release (`.github/workflows/release.yml`) also signs the same version and uploads it to App
-Store Connect, using `Scripts/upload-testflight.sh`. Signing is Xcode's cloud-managed signing, so
-no certificates or profiles are stored anywhere.
+Every push to `main` that changes the app (`.github/workflows/testflight.yml`) is signed and
+uploaded to App Store Connect, using `Scripts/upload-testflight.sh`, and shows in TestFlight for
+internal testers without App Review. Docs-only pushes are skipped. The version is what a release of
+that commit would get and the build number is the commit count, so a GitHub Release names the same
+build. Releases do not upload again. Nothing reaches the App Store until a build is submitted for
+review by hand.
+
+Signing is Xcode's cloud-managed signing, so no certificates or profiles are stored anywhere.
 
 It needs, in the GitHub repository's settings (Secrets and variables > Actions):
 
 | Name | Kind | Value |
 |---|---|---|
 | `APPLE_TEAM_ID` | Variable | `8XJ7U864NY` (set) |
-| `ASC_KEY_ID` | Secret | The API key's ID |
-| `ASC_ISSUER_ID` | Secret | The issuer ID shown above the list of keys |
-| `ASC_KEY_P8` | Secret | The whole contents of the downloaded `AuthKey_<ID>.p8` |
+| `ASC_KEY_ID` | Secret | The API key's ID (set) |
+| `ASC_ISSUER_ID` | Secret | The issuer ID shown above the list of keys (set) |
+| `ASC_KEY_P8` | Secret | The whole contents of the downloaded `AuthKey_<ID>.p8` (set) |
 
 The key is a **Team key** with the **Admin** role, from App Store Connect > Users and Access >
 Integrations > App Store Connect API. Admin is what lets Xcode create the distribution certificate
-itself. Until the secrets exist, the TestFlight job is skipped with a note and the rest of the
-release runs as before.
+itself. If a secret is missing, the TestFlight workflow skips itself with a note.
 
-The app record must exist in App Store Connect before the first upload.
+The app record exists (App Store Connect app id `6821988926`).
 
 ## Before each submission
 
-1. Build number: the release workflow sets it from the commit count, so it always goes up.
+1. Build: pick it in App Store Connect from the TestFlight builds. Its build number is the commit
+   count, so it always goes up.
 2. Version: the tag (`vX.Y.Z`) sets `MARKETING_VERSION`.
 3. Check the screenshots still match the app.
 4. Placeholder art: the icon is a stand-in made by `Scripts/make-placeholder-icon.py`. Replace
