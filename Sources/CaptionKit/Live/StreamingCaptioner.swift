@@ -348,6 +348,7 @@ public final class StreamingCaptioner: @unchecked Sendable {
     /// and the first download is around a gigabyte; `progress` hears about both, at most once per
     /// whole percent.
     public func prepare(progress: (@Sendable (ModelProgress) -> Void)? = nil) async throws {
+        ModelPins.apply()
         let report = ProgressCoalescer(progress)
         let sizes = ModelCache.downloadMegabytes(for: options.asrVariant)
         let asrShare = Double(sizes.recogniser) / Double(sizes.recogniser + sizes.diarizer)

@@ -1005,3 +1005,6 @@ Version note: FluidAudio was evaluated at commit `fc8c3e4` (2026-10-09). The pac
 — its source comments cite issues up to #897 in a one-day-old checkout — so it is now pinned by
 exact revision in `Package.swift` rather than tracked, because it ships model-download URLs and
 CoreML shapes that a moving dependency would change underneath these measurements.
+The models themselves are pinned separately: FluidAudio downloads most of them from each Hugging
+Face repository's `main` branch, so `ModelPins` (`Sources/CaptionKit/Live/ModelPins.swift`) fixes
+Nemotron, Parakeet Unified and Sortformer to the commits these measurements used.

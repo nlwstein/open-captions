@@ -83,6 +83,10 @@ by FluidInference and run through [FluidAudio](https://github.com/FluidInference
 | **Turns speech into words** (alternative, in settings) | [nvidia/parakeet-unified-en-0.6b](https://huggingface.co/nvidia/parakeet-unified-en-0.6b) | [FluidInference/parakeet-unified-en-0.6b-coreml](https://huggingface.co/FluidInference/parakeet-unified-en-0.6b-coreml) | [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/) |
 | **Adds punctuation, capitals and sentence ends** | [1-800-BAD-CODE/punctuation_fullstop_truecase_english](https://huggingface.co/1-800-BAD-CODE/punctuation_fullstop_truecase_english) | Built into the app, converted by [Scripts/punctuation_model.py](Scripts/punctuation_model.py) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 
+The downloads come from fixed Hugging Face commits, listed in
+[ModelPins.swift](Sources/CaptionKit/Live/ModelPins.swift), so every phone runs the files a
+release was tested with. Moving to newer models takes an app update.
+
 ## Install
 
 - Download the latest `.ipa` from the [Releases page](https://github.com/nlwstein/open-captions/releases).
