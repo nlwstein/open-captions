@@ -7,8 +7,8 @@ for the text as written here.
 
 | Field | Value |
 |---|---|
-| Name (30) | Open Captions |
-| Subtitle (30) | Live captions on your phone |
+| Name (30) | Open Captions: Live Subtitles |
+| Subtitle (30) | Conversations as large text |
 | Bundle ID | io.nlws.livecaption |
 | Primary category | Utilities |
 | Secondary category | Productivity |
@@ -35,10 +35,11 @@ Not **Medical**: the app makes no medical claims, and that category gets closer 
 > big button, large text, and nothing sent off the phone.
 
 **Keywords (100).** Comma-separated, no spaces after commas. Words in the name are already
-searched, so "open" and "captions" are left out.
+searched, so "open", "captions" and "subtitles" are left out. Plain "Open Captions" was taken
+on the Store, so the name carries a descriptive suffix; the name under the icon is still "Captions".
 
 ```
-live caption,transcribe,transcription,hard of hearing,deaf,hearing loss,subtitles,speech to text
+live caption,transcribe,transcription,hard of hearing,deaf,hearing loss,captioning,speech to text
 ```
 
 **Description (4000).**
