@@ -63,7 +63,7 @@ cat > "$OUT/ExportOptions.plist" <<EOF
 <plist version="1.0">
 <dict>
   <key>method</key><string>app-store-connect</string>
-  <key>destination</key><string>upload</string>
+  <key>destination</key><string>export</string>
   <key>teamID</key><string>$APPLE_TEAM_ID</string>
   <key>signingStyle</key><string>automatic</string>
   <key>uploadSymbols</key><true/>
@@ -72,11 +72,30 @@ cat > "$OUT/ExportOptions.plist" <<EOF
 </plist>
 EOF
 
-echo "Uploading to App Store Connect…"
+# Export a signed IPA, then upload it with altool. Letting xcodebuild upload (destination=upload)
+# fails with an API key: its store-configuration request gets "Cannot verify client's JWT headers"
+# (CDWebService 3004), though the same key signs the archive and altool accepts it.
+echo "Exporting the signed IPA…"
 status=0
 xcodebuild -exportArchive -archivePath "$ARCHIVE" \
   -exportOptionsPlist "$OUT/ExportOptions.plist" -exportPath "$OUT/export" \
-  "${AUTH[@]}" > "$OUT/upload.log" 2>&1 || status=$?
-grep -E 'error:|Upload succeeded|EXPORT SUCCEEDED|uploaded' "$OUT/upload.log" | sort -u | head -40 || true
+  "${AUTH[@]}" > "$OUT/export.log" 2>&1 || status=$?
+grep -E 'error:|EXPORT SUCCEEDED' "$OUT/export.log" | sort -u | head -40 || true
+[ $status -eq 0 ] || fail "export failed (full log: $OUT/export.log)"
+IPA=$(ls "$OUT"/export/*.ipa 2>/dev/null | head -1)
+[ -n "$IPA" ] || fail "export made no .ipa (full log: $OUT/export.log)"
+
+# altool looks for the key as AuthKey_<ID>.p8 in API_PRIVATE_KEYS_DIR, so give it a directory
+# holding only that, and remove it afterwards.
+KEYS=$(mktemp -d)
+trap 'rm -rf "$KEYS"' EXIT
+cp "$ASC_KEY_PATH" "$KEYS/AuthKey_$ASC_KEY_ID.p8"
+chmod 600 "$KEYS/AuthKey_$ASC_KEY_ID.p8"
+
+echo "Uploading to App Store Connect…"
+status=0
+API_PRIVATE_KEYS_DIR=$KEYS xcrun altool --upload-app -f "$IPA" -t ios \
+  --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" > "$OUT/upload.log" 2>&1 || status=$?
+grep -iE 'error|UPLOAD SUCCEEDED|No errors uploading' "$OUT/upload.log" | sort -u | head -40 || true
 [ $status -eq 0 ] || fail "upload failed (full log: $OUT/upload.log)"
 echo "Uploaded OpenCaptions $VERSION ($BUILD). It shows in TestFlight once Apple has processed it."
