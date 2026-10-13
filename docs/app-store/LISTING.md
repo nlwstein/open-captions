@@ -109,16 +109,36 @@ smaller iPhone sizes. They were made in the iOS Simulator by playing back a scri
 
 ## Notes for the reviewer
 
+App Review's 2.1 "Information Needed" request (2026-10-13) asked for these six answers, in the reply
+and in the Notes field for future submissions. Keep them current; attach a fresh screen recording
+to the reply if the app's flow changes.
+
 ```
-Open Captions shows live captions of nearby speech, recognised entirely on the device.
+1. SCREEN RECORDING
+Attached: a recording on an iPhone 15 Pro Max running the latest iOS, starting from launch. It shows first-time setup (model download, microphone permission), live captions of a conversation, landscape mode, stopping, past conversations, and the settings. The app has no accounts, no user-generated content shared with others, and nothing paid.
 
-First launch: the app asks to download its speech models, about 1.1 GB, from Hugging Face. Please use Wi-Fi; it takes a few minutes. After the download, the first start takes about 20 seconds while iOS prepares the models for the Neural Engine. After that, captions start immediately and no network is needed.
+2. PURPOSE AND AUDIENCE
+Open Captions is a free, non-profit accessibility app for people who are deaf or hard of hearing, especially older people who find most apps confusing. It shows what the people around them are saying as large text, live, with each speaker in their own colour, so they can follow a conversation at the dinner table or a doctor's appointment. The main screen is one large Start button and the captions; a family member or carer does the one-time setup.
 
-To try it: tap Start and speak, or play any spoken audio near the phone. Captions appear about a second behind the speaker.
+3. HOW TO USE IT
+- Launch the app. Setup asks to download the speech models, about 1.1 GB, from Hugging Face. Please use Wi-Fi; it takes a few minutes.
+- Allow the microphone when asked. The first start then takes about 20 seconds while iOS prepares the models; after that, captions start immediately and no network is needed.
+- Tap Start and speak, or play any spoken-word audio (a podcast or video) near the phone. Captions appear about a second behind the speaker. Tap Stop to end; the conversation is saved as text and can be read again from the list of past conversations.
+- Settings are deliberately hard to reach, so the person using the app can't change them by accident: hold a finger on the top of the screen for two seconds. No PIN is set.
+No login, credentials or sample files are needed.
 
-Settings are deliberately hard to reach in Simple mode, so the person using it can't change them by accident: hold a finger on the top of the screen for two seconds. No PIN is set.
+4. EXTERNAL SERVICES
+- Hugging Face (huggingface.co): a one-time, anonymous download of the open speech models during setup. No account, and nothing about the user is sent.
+- That is the only network use. Speech recognition, speaker separation and punctuation all run on the iPhone (NVIDIA Nemotron and Sortformer models via the open-source FluidAudio library, and an open punctuation model built into the app). There are no cloud AI services, analytics, advertising, crash reporting, authentication or payment services. No audio or text leaves the device.
+- Links to the privacy policy, source code and issue tracker on GitHub open in Safari.
 
-The microphone is used only for live captioning. No audio or text leaves the device. The audio background mode is there so captioning carries on when the screen locks during a conversation; the app stops listening when Stop is pressed.
+5. REGIONS
+The app works the same in every region where it is offered. It recognises English speech only, and that is stated in the description.
+
+6. REGULATION AND THIRD-PARTY MATERIAL
+The app is not a medical device and makes no medical claims; the description tells users not to rely on captions alone for important information. It shows no third-party content. The speech models are openly licensed for this use: NVIDIA Open Model License (Nemotron, Sortformer) and Apache 2.0 (punctuation model). The app's own source is public at https://github.com/nlwstein/open-captions with the licences listed in THIRD_PARTY_NOTICES.md.
+
+The microphone is used only for live captioning. The audio background mode keeps captioning running if the screen locks during a conversation; the app stops listening when Stop is pressed.
 ```
 
 ## Uploading builds to TestFlight
